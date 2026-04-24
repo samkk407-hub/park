@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { useColorScheme } from "react-native";
 import { api } from "@/lib/api";
 
 export type UserRole = "admin" | "owner" | "attendant" | "superadmin";
@@ -48,6 +49,17 @@ export interface VehicleEntry {
   exitTime?: string;
   paymentType: PaymentType;
   paymentStatus: PaymentStatus;
+  paymentCollectedByUserId?: string;
+  paymentCollectedByName?: string;
+  paymentCollectedByRole?: "owner" | "attendant" | "superadmin";
+  paymentCollectedAt?: string;
+  settlementStatus?: "not_applicable" | "unsettled" | "settled";
+  onlineSettlementStatus?: "not_applicable" | "unsettled" | "pending" | "settled";
+  onlineSettledAt?: string;
+  onlineSettlementId?: string;
+  settledAt?: string;
+  settledByUserId?: string;
+  settledByName?: string;
   amount: number;
   status: EntryStatus;
   attendantId: string;
@@ -83,18 +95,22 @@ interface AppContextType {
   staff: Staff[];
   activityLogs: ActivityLog[];
   isLoading: boolean;
+  themeMode: "light" | "dark" | "system";
+  resolvedTheme: "light" | "dark";
   loginWithToken: (token: string, user: User, parking: any) => Promise<void>;
   logout: () => Promise<void>;
   setupParking: (parking: Omit<ParkingProfile, "id" | "ownerId">) => Promise<void>;
   addEntry: (entry: any) => Promise<VehicleEntry>;
   exitVehicle: (entryId: string, _exitTime?: string) => Promise<void>;
-  updatePaymentStatus: (entryId: string, status: PaymentStatus) => Promise<void>;
+  updatePaymentStatus: (entryId: string, status: PaymentStatus, paymentType?: PaymentType) => Promise<void>;
   addStaff: (staff: Omit<Staff, "id" | "parkingId" | "createdAt">) => Promise<void>;
   updateStaff: (id: string, updates: Partial<Staff>) => Promise<void>;
   deleteStaff: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshEntries: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  setThemeMode: (mode: "light" | "dark" | "system") => Promise<void>;
+  toggleTheme: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -103,6 +119,7 @@ const STORAGE_KEYS = {
   TOKEN: "@parkease_token",
   USER: "@parkease_user",
   PARKING: "@parkease_parking",
+  THEME: "@parkease_theme",
 };
 
 function mapEntry(e: any): VehicleEntry {
@@ -117,6 +134,17 @@ function mapEntry(e: any): VehicleEntry {
     exitTime: e.exitTime,
     paymentType: e.paymentType,
     paymentStatus: e.paymentStatus,
+    paymentCollectedByUserId: e.paymentCollectedByUserId,
+    paymentCollectedByName: e.paymentCollectedByName,
+    paymentCollectedByRole: e.paymentCollectedByRole,
+    paymentCollectedAt: e.paymentCollectedAt,
+    settlementStatus: e.settlementStatus,
+    onlineSettlementStatus: e.onlineSettlementStatus,
+    onlineSettledAt: e.onlineSettledAt,
+    onlineSettlementId: e.onlineSettlementId,
+    settledAt: e.settledAt,
+    settledByUserId: e.settledByUserId,
+    settledByName: e.settledByName,
     amount: e.amount,
     status: e.status,
     attendantId: e.attendantId,
@@ -148,6 +176,7 @@ function mapParking(p: any): ParkingProfile {
 }
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
+  const systemColorScheme = useColorScheme();
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [parking, setParking] = useState<ParkingProfile | null>(null);
@@ -155,7 +184,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [themeMode, setThemeModeState] = useState<"light" | "dark" | "system">("system");
   const refreshSessionRef = useRef<Promise<void> | null>(null);
+  const resolvedTheme: "light" | "dark" =
+    themeMode === "system" ? (systemColorScheme === "dark" ? "dark" : "light") : themeMode;
 
   useEffect(() => {
     loadSession();
@@ -163,10 +195,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const loadSession = async () => {
     try {
-      const [savedToken, savedUser] = await Promise.all([
+      const [savedToken, savedUser, savedTheme] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.TOKEN),
         AsyncStorage.getItem(STORAGE_KEYS.USER),
+        AsyncStorage.getItem(STORAGE_KEYS.THEME),
       ]);
+      if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") {
+        setThemeModeState(savedTheme);
+      }
       if (savedToken && savedUser) {
         const userObj = JSON.parse(savedUser) as User;
         setToken(savedToken);
@@ -226,6 +262,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const setThemeMode = useCallback(async (mode: "light" | "dark" | "system") => {
+    setThemeModeState(mode);
+    await AsyncStorage.setItem(STORAGE_KEYS.THEME, mode);
+  }, []);
+
+  const toggleTheme = useCallback(async () => {
+    const nextMode = resolvedTheme === "dark" ? "light" : "dark";
+    setThemeModeState(nextMode);
+    await AsyncStorage.setItem(STORAGE_KEYS.THEME, nextMode);
+  }, [resolvedTheme]);
+
   const logout = useCallback(async () => {
     setUser(null);
     setToken(null);
@@ -266,9 +313,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setEntries(prev => prev.map(e => e.id === entryId ? mapped : e));
   }, [token]);
 
-  const updatePaymentStatus = useCallback(async (entryId: string, status: PaymentStatus) => {
+  const updatePaymentStatus = useCallback(async (entryId: string, status: PaymentStatus, paymentType?: PaymentType) => {
     if (!token) throw new Error("Not authenticated");
-    const { entry } = await api.updatePayment(entryId, status, token);
+    const { entry } = await api.updatePayment(entryId, status, token, paymentType);
     const mapped = mapEntry(entry);
     setEntries(prev => prev.map(e => e.id === entryId ? mapped : e));
   }, [token]);
@@ -350,9 +397,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       user, token, parking, entries, staff, activityLogs, isLoading,
+      themeMode, resolvedTheme,
       loginWithToken, logout, setupParking, addEntry, exitVehicle,
       updatePaymentStatus, addStaff, updateStaff, deleteStaff,
       refreshData, refreshEntries, refreshSession,
+      setThemeMode, toggleTheme,
     }}>
       {children}
     </AppContext.Provider>

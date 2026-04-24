@@ -105,8 +105,103 @@ export default function LoginScreen() {
     }
   };
 
+  const roleScreen = (
+    <View style={styles.roleScreen}>
+      <View style={styles.header}>
+        <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
+          <Feather name="map-pin" size={32} color="#fff" />
+        </View>
+        <Text style={[styles.appName, { color: colors.foreground }]}>ParkEase</Text>
+        <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
+          Smart Parking Management
+        </Text>
+      </View>
+
+      <View style={[styles.card, styles.roleCardContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        <View style={[styles.roleIntro, { backgroundColor: colors.accent }]}>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>Choose Your Role</Text>
+          <Text style={[styles.cardSubtitle, { color: colors.mutedForeground }]}>
+            Select how you want to use ParkEase.
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.roleCard, { backgroundColor: colors.muted, borderColor: colors.border }]}
+          onPress={() => selectRole("owner")}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.roleIcon, { backgroundColor: colors.primary }]}>
+            <Feather name="briefcase" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.roleCardTitle, { color: colors.foreground }]}>Owner Login</Text>
+            <Text style={[styles.roleCardSub, { color: colors.mutedForeground }]}>
+              Set up your parking, manage staff, and track reports.
+            </Text>
+            <View style={styles.rolePoints}>
+              <Text style={[styles.rolePoint, { color: colors.primary }]}>
+                Create and manage your parking
+              </Text>
+              <Text style={[styles.rolePoint, { color: colors.primary }]}>
+                Add attendants and monitor earnings
+              </Text>
+            </View>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.primary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.roleCard, { backgroundColor: colors.muted, borderColor: colors.border }]}
+          onPress={() => selectRole("attendant")}
+          activeOpacity={0.8}
+        >
+          <View style={[styles.roleIcon, { backgroundColor: colors.info }]}>
+            <Feather name="user" size={22} color="#fff" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.roleCardTitle, { color: colors.foreground }]}>Attendant Login</Text>
+            <Text style={[styles.roleCardSub, { color: colors.mutedForeground }]}>
+              Use this if your owner has already added your number.
+            </Text>
+            <View style={styles.rolePoints}>
+              <Text style={[styles.rolePoint, { color: colors.mutedForeground }]}>
+                For entry, exit, and daily operations
+              </Text>
+              <Text style={[styles.rolePoint, { color: colors.mutedForeground }]}>
+                Cannot create a new parking
+              </Text>
+            </View>
+          </View>
+          <Feather name="chevron-right" size={18} color={colors.info} />
+        </TouchableOpacity>
+
+        <View style={[styles.helpBox, { backgroundColor: colors.accent }]}>
+          <Feather name="info" size={16} color={colors.primary} />
+          <Text style={[styles.helpText, { color: colors.primary }]}>
+            Owners create parkings. Attendants can sign in only after being added by an owner.
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      {step === "role" ? (
+        <View
+          style={[
+            styles.container,
+            styles.roleContainer,
+            {
+              backgroundColor: colors.background,
+              paddingTop: isWeb ? 80 : insets.top + 20,
+              paddingBottom: isWeb ? 34 : insets.bottom + 20,
+            },
+          ]}
+        >
+          {roleScreen}
+        </View>
+      ) : (
       <ScrollView
         contentContainerStyle={[
           styles.container,
@@ -118,60 +213,17 @@ export default function LoginScreen() {
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
-            <Feather name="map-pin" size={32} color="#fff" />
-          </View>
-          <Text style={[styles.appName, { color: colors.foreground }]}>ParkEase</Text>
-          <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
-            Smart Parking Management
-          </Text>
-        </View>
-
-        {step === "role" && (
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Welcome</Text>
-            <Text style={[styles.cardSubtitle, { color: colors.mutedForeground }]}>
-              How do you want to sign in?
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: colors.primary + "10", borderColor: colors.primary }]}
-              onPress={() => selectRole("owner")}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.roleIcon, { backgroundColor: colors.primary }]}>
-                <Feather name="briefcase" size={22} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.roleCardTitle, { color: colors.foreground }]}>Owner Login</Text>
-                <Text style={[styles.roleCardSub, { color: colors.mutedForeground }]}>
-                  Manage your parking, staff & reports
-                </Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={colors.primary} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.roleCard, { backgroundColor: colors.muted, borderColor: colors.border }]}
-              onPress={() => selectRole("attendant")}
-              activeOpacity={0.8}
-            >
-              <View style={[styles.roleIcon, { backgroundColor: colors.mutedForeground }]}>
-                <Feather name="user" size={22} color="#fff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.roleCardTitle, { color: colors.foreground }]}>Attendant Login</Text>
-                <Text style={[styles.roleCardSub, { color: colors.mutedForeground }]}>
-                  Sign in as parking attendant
-                </Text>
-              </View>
-              <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
-            </TouchableOpacity>
-          </View>
-        )}
-
         {step === "mobile" && (
+          <>
+            <View style={styles.header}>
+              <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
+                <Feather name="map-pin" size={32} color="#fff" />
+              </View>
+              <Text style={[styles.appName, { color: colors.foreground }]}>ParkEase</Text>
+              <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
+                Smart Parking Management
+              </Text>
+            </View>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <TouchableOpacity onPress={() => setStep("role")} style={styles.backRow}>
               <Feather name="arrow-left" size={18} color={colors.primary} />
@@ -213,9 +265,20 @@ export default function LoginScreen() {
 
             <PrimaryButton label="Send OTP" onPress={handleSendOtp} loading={loading} />
           </View>
+          </>
         )}
 
         {step === "otp" && (
+          <>
+            <View style={styles.header}>
+              <View style={[styles.logoBox, { backgroundColor: colors.primary }]}>
+                <Feather name="map-pin" size={32} color="#fff" />
+              </View>
+              <Text style={[styles.appName, { color: colors.foreground }]}>ParkEase</Text>
+              <Text style={[styles.tagline, { color: colors.mutedForeground }]}>
+                Smart Parking Management
+              </Text>
+            </View>
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <TouchableOpacity onPress={() => setStep("mobile")} style={styles.backRow}>
               <Feather name="arrow-left" size={18} color={colors.primary} />
@@ -267,38 +330,69 @@ export default function LoginScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+          </>
         )}
       </ScrollView>
+      )}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 20, gap: 24 },
+  roleContainer: { flex: 1 },
+  roleScreen: { flex: 1, justifyContent: "space-between", gap: 20 },
   header: { alignItems: "center", gap: 8, paddingTop: 20, paddingBottom: 10 },
-  logoBox: { width: 72, height: 72, borderRadius: 20, alignItems: "center", justifyContent: "center", marginBottom: 8 },
+  logoBox: { width: 68, height: 68, borderRadius: 20, alignItems: "center", justifyContent: "center", marginBottom: 6 },
   appName: { fontSize: 28, fontFamily: "Inter_700Bold", letterSpacing: -0.5 },
   tagline: { fontSize: 14, fontFamily: "Inter_400Regular" },
   card: { borderRadius: 16, borderWidth: 1, padding: 24, gap: 16 },
-  cardTitle: { fontSize: 22, fontFamily: "Inter_700Bold" },
-  cardSubtitle: { fontSize: 14, fontFamily: "Inter_400Regular" },
+  roleCardContainer: { padding: 18, gap: 14 },
+  cardTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  cardSubtitle: { fontSize: 13, fontFamily: "Inter_400Regular" },
+  roleIntro: {
+    borderRadius: 14,
+    padding: 12,
+    gap: 3,
+  },
   roleCard: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: 14,
     borderRadius: 14,
-    borderWidth: 1.5,
-    padding: 16,
+    borderWidth: 1,
+    padding: 14,
   },
   roleIcon: {
-    width: 46,
-    height: 46,
+    width: 44,
+    height: 44,
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
   roleCardTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold" },
-  roleCardSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 },
+  roleCardSub: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2, lineHeight: 18 },
+  rolePoints: {
+    marginTop: 8,
+    gap: 4,
+  },
+  rolePoint: {
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  helpBox: {
+    borderRadius: 12,
+    padding: 10,
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "flex-start",
+  },
+  helpText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontFamily: "Inter_500Medium",
+  },
   modePill: {
     flexDirection: "row",
     alignItems: "center",

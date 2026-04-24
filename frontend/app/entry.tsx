@@ -27,7 +27,7 @@ const PAYMENT_OPTIONS: { type: PaymentType; label: string; icon: any }[] = [
 export default function EntryScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { parking, entries, user, addEntry } = useApp();
+  const { parking, entries, user, addEntry, updatePaymentStatus } = useApp();
 
   const [vehicleType, setVehicleType] = useState<VehicleType>("bike");
   const [numberPlate, setNumberPlate] = useState("");
@@ -56,6 +56,25 @@ export default function EntryScreen() {
     return Object.keys(errs).length === 0;
   };
 
+  const createPaidEntry = async (selectedPaymentType: PaymentType) => {
+    const entry = await addEntry({
+      vehicleType,
+      numberPlate: numberPlate.trim().toUpperCase(),
+      customerMobile: customerMobile.trim(),
+      entryTime: new Date().toISOString(),
+      paymentType: selectedPaymentType,
+      paymentStatus: "pending",
+      amount: rate,
+      status: "inside",
+      attendantId: user?.id || "",
+      attendantName: user?.name || "Unknown",
+    });
+
+    await updatePaymentStatus(entry.id, "paid", selectedPaymentType);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    router.replace({ pathname: "/ticket", params: { id: entry.id } });
+  };
+
   const handleSubmit = async () => {
     if (!validate()) return;
     if (!parking) {
@@ -69,25 +88,38 @@ export default function EntryScreen() {
 
     setLoading(true);
     try {
-      const entry = await addEntry({
-        vehicleType,
-        numberPlate: numberPlate.trim().toUpperCase(),
-        customerMobile: customerMobile.trim(),
-        entryTime: new Date().toISOString(),
-        paymentType,
-        paymentStatus: "pending",
-        amount: rate,
-        status: "inside",
-        attendantId: user?.id || "",
-        attendantName: user?.name || "Unknown",
-      });
+      if (paymentType === "online") {
+        Alert.alert(
+          "Razorpay Demo",
+          `Demo checkout for Rs ${rate}. Continue payment and generate ticket?`,
+          [
+            {
+              text: "Cancel",
+              style: "cancel",
+              onPress: () => setLoading(false),
+            },
+            {
+              text: "Pay Now",
+              onPress: () => {
+                void createPaidEntry("online")
+                  .catch(() => {
+                    Alert.alert("Error", "Failed to complete online payment and generate ticket");
+                  })
+                  .finally(() => setLoading(false));
+              },
+            },
+          ]
+        );
+        return;
+      }
 
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace({ pathname: "/ticket", params: { id: entry.id } });
+      await createPaidEntry("offline");
     } catch (e) {
       Alert.alert("Error", "Failed to save entry");
     } finally {
-      setLoading(false);
+      if (paymentType !== "online") {
+        setLoading(false);
+      }
     }
   };
 
@@ -139,7 +171,7 @@ export default function EntryScreen() {
 
             <View style={[styles.rateTag, { backgroundColor: colors.accent }]}>
               <Feather name="tag" size={14} color={colors.primary} />
-              <Text style={[styles.rateText, { color: colors.primary }]}>Rate: ₹{rate}/hr</Text>
+              <Text style={[styles.rateText, { color: colors.primary }]}>Rate: Rs {rate}/hr</Text>
             </View>
           </View>
 
@@ -209,7 +241,11 @@ export default function EntryScreen() {
             </Text>
           </View>
 
-          <PrimaryButton label="Generate Ticket" onPress={handleSubmit} loading={loading} />
+          <PrimaryButton
+            label={paymentType === "online" ? "Pay & Generate Ticket" : "Collect Cash & Generate Ticket"}
+            onPress={handleSubmit}
+            loading={loading}
+          />
           <View style={{ height: 20 }} />
         </ScrollView>
       </View>

@@ -37,9 +37,31 @@ export default function DashboardScreen() {
       offlineIncome,
       totalIncome: onlineIncome + offlineIncome,
       pending,
+      myCollectedCash: user
+        ? entries
+            .filter(
+              (e) =>
+                e.paymentStatus === "paid" &&
+                e.paymentType === "offline" &&
+                e.paymentCollectedByUserId === user.id &&
+                e.settlementStatus === "unsettled"
+            )
+            .reduce((s, e) => s + e.amount, 0)
+        : 0,
+      ownerWalletBalance: user?.role === "owner" || user?.role === "superadmin"
+        ? entries
+            .filter(
+              (e) =>
+                e.paymentStatus === "paid" &&
+                e.paymentType === "online" &&
+                e.paymentCollectedByRole === "owner" &&
+                e.onlineSettlementStatus === "unsettled"
+            )
+            .reduce((s, e) => s + e.amount, 0)
+        : 0,
       occupancyPct: parking ? Math.min((inside.length / parking.totalCapacity) * 100, 100) : 0,
     };
-  }, [entries, today, parking]);
+  }, [entries, today, parking, user]);
 
   const recentEntries = useMemo(() =>
     entries.filter(e => e.status === "inside").slice(0, 5),
@@ -125,6 +147,32 @@ export default function DashboardScreen() {
           bgColor={stats.pending > 0 ? colors.warningLight : colors.successLight}
         />
       </View>
+
+      {user?.role === "attendant" && (
+        <View style={styles.gridRow}>
+          <StatsCard
+            label="Cash To Submit"
+            value={`Rs ${stats.myCollectedCash}`}
+            icon="briefcase"
+            color={stats.myCollectedCash > 0 ? colors.warning : colors.success}
+            bgColor={stats.myCollectedCash > 0 ? colors.warningLight : colors.successLight}
+            subtitle={stats.myCollectedCash > 0 ? "Collect by owner pending" : "All settled"}
+          />
+        </View>
+      )}
+
+      {(user?.role === "owner" || user?.role === "superadmin") && (
+        <View style={styles.gridRow}>
+          <StatsCard
+            label="Wallet Balance"
+            value={`Rs ${stats.ownerWalletBalance}`}
+            icon="credit-card"
+            color={stats.ownerWalletBalance > 0 ? colors.primary : colors.success}
+            bgColor={stats.ownerWalletBalance > 0 ? colors.accent : colors.successLight}
+            subtitle={stats.ownerWalletBalance > 0 ? "Ready to settle to bank" : "No online balance pending"}
+          />
+        </View>
+      )}
 
       {/* Income */}
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>

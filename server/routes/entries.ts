@@ -86,12 +86,78 @@ router.put("/:id/exit", authMiddleware, async (req: Request, res: Response) => {
 });
 
 router.put("/:id/payment", authMiddleware, async (req: Request, res: Response) => {
+  const userId = (req as any).userId as string;
+  const userRole = (req as any).userRole as string;
   const { paymentStatus, paymentType } = req.body as any;
+  const user = await User.findById(userId);
   const entry = await VehicleEntry.findById(req.params["id"]);
   if (!entry) return res.status(404).json({ error: "Not found" });
+  const parking = await Parking.findById(entry.parkingId);
+  if (!parking) return res.status(404).json({ error: "Parking not found" });
+
   if (paymentStatus) entry.paymentStatus = paymentStatus;
   if (paymentType) entry.paymentType = paymentType;
+
+  if (entry.paymentStatus === "paid") {
+    entry.paymentCollectedAt = new Date();
+
+    if (entry.paymentType === "online") {
+      entry.paymentCollectedByUserId = parking.ownerId;
+      entry.paymentCollectedByName = parking.ownerName;
+      entry.paymentCollectedByRole = "owner";
+      entry.onlineSettlementStatus = "unsettled";
+      entry.onlineSettledAt = undefined;
+      entry.onlineSettlementId = undefined;
+      entry.settlementStatus = "not_applicable";
+      entry.settledAt = undefined;
+      entry.settledByUserId = undefined;
+      entry.settledByName = undefined;
+    } else if (user) {
+      entry.onlineSettlementStatus = "not_applicable";
+      entry.onlineSettledAt = undefined;
+      entry.onlineSettlementId = undefined;
+      entry.paymentCollectedByUserId = userId;
+      entry.paymentCollectedByName = user.name;
+      entry.paymentCollectedByRole = userRole as "owner" | "attendant" | "superadmin";
+
+      if (userRole === "attendant") {
+        entry.settlementStatus = "unsettled";
+        entry.settledAt = undefined;
+        entry.settledByUserId = undefined;
+        entry.settledByName = undefined;
+      } else {
+        entry.settlementStatus = "settled";
+        entry.settledAt = new Date();
+        entry.settledByUserId = userId;
+        entry.settledByName = user.name;
+      }
+    }
+  } else {
+    entry.paymentCollectedByUserId = undefined;
+    entry.paymentCollectedByName = undefined;
+    entry.paymentCollectedByRole = undefined;
+    entry.paymentCollectedAt = undefined;
+    entry.onlineSettlementStatus = "not_applicable";
+    entry.onlineSettledAt = undefined;
+    entry.onlineSettlementId = undefined;
+    entry.settlementStatus = "not_applicable";
+    entry.settledAt = undefined;
+    entry.settledByUserId = undefined;
+    entry.settledByName = undefined;
+  }
+
   await entry.save();
+
+  if (user) {
+    await ActivityLog.create({
+      parkingId: entry.parkingId,
+      userId,
+      userName: user.name,
+      action: "payment_update",
+      details: `${entry.numberPlate} payment marked ${entry.paymentStatus} via ${entry.paymentType}`,
+    });
+  }
+
   return res.json({ entry });
 });
 

@@ -1,6 +1,5 @@
-import { useColorScheme } from "react-native";
-
 import colors from "@/constants/colors";
+import { useApp } from "@/context/AppContext";
 
 type ColorPalette = typeof colors.light;
 type ThemeColors = ColorPalette & { radius: number };
@@ -18,7 +17,7 @@ type ThemeColors = ColorPalette & { radius: number };
  * device's appearance setting.
  */
 export function useColors(): ThemeColors {
-  const scheme = useColorScheme();
-  const palette: ColorPalette = scheme === "dark" ? colors.dark : colors.light;
+  const { resolvedTheme } = useApp();
+  const palette: ColorPalette = resolvedTheme === "dark" ? colors.dark : colors.light;
   return { ...palette, radius: colors.radius };
 }

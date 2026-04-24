@@ -4,22 +4,28 @@ import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import {
-  Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View
+  Alert,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { PrimaryButton } from "@/components/PrimaryButton";
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { PrimaryButton } from "@/components/PrimaryButton";
 
 export default function TicketScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { entries, parking, updatePaymentStatus, refreshSession } = useApp();
+  const { entries, parking, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const isWeb = Platform.OS === "web";
 
-  const entry = useMemo(() => entries.find(e => e.id === id), [entries, id]);
+  const entry = useMemo(() => entries.find((e) => e.id === id), [entries, id]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -30,7 +36,7 @@ export default function TicketScreen() {
   useEffect(() => {
     if (!entry) return;
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, []);
+  }, [entry]);
 
   if (!entry || !parking) {
     return (
@@ -45,16 +51,10 @@ export default function TicketScreen() {
   const topPad = isWeb ? 67 : insets.top + 16;
   const botPad = isWeb ? 34 : insets.bottom + 20;
 
-  const handleMarkPaid = async () => {
-    await updatePaymentStatus(entry.id, "paid");
-    Alert.alert("Payment Recorded", "Payment has been marked as received.");
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  };
-
   const handleShare = () => {
     Alert.alert(
       "Share Ticket",
-      `WhatsApp/SMS sharing would be configured here.\n\nTicket ID: ${entry.ticketId}\nVehicle: ${entry.numberPlate}\nAmount: ₹${entry.amount}`,
+      `WhatsApp/SMS sharing would be configured here.\n\nTicket ID: ${entry.ticketId}\nVehicle: ${entry.numberPlate}\nAmount: Rs ${entry.amount}`
     );
   };
 
@@ -64,7 +64,6 @@ export default function TicketScreen() {
       contentContainerStyle={{ paddingTop: topPad, paddingBottom: botPad, paddingHorizontal: 20, gap: 20 }}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity onPress={() => router.push("/")} style={[styles.backBtn, { backgroundColor: colors.muted }]}>
           <Feather name="x" size={20} color={colors.foreground} />
@@ -75,9 +74,7 @@ export default function TicketScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Ticket Card */}
       <View style={[styles.ticketCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        {/* Header Band */}
         <View style={[styles.ticketHeader, { backgroundColor: colors.primary }]}>
           <Feather name="map-pin" size={20} color="#fff" />
           <View style={{ flex: 1 }}>
@@ -86,81 +83,67 @@ export default function TicketScreen() {
           </View>
         </View>
 
-        {/* Perforated Edge */}
         <View style={[styles.perforated, { borderTopColor: colors.border }]}>
           <View style={[styles.circle, { backgroundColor: colors.background, left: -20 }]} />
           <View style={[styles.circle, { backgroundColor: colors.background, right: -20 }]} />
         </View>
 
-        {/* Ticket Body */}
         <View style={styles.ticketBody}>
-          {/* Ticket ID */}
           <View style={styles.ticketIdRow}>
             <Text style={[styles.ticketIdLabel, { color: colors.mutedForeground }]}>TICKET ID</Text>
             <Text style={[styles.ticketId, { color: colors.primary }]}>{entry.ticketId}</Text>
           </View>
 
-          {/* QR Placeholder */}
           <View style={[styles.qrBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
             <Feather name="grid" size={40} color={colors.mutedForeground} />
             <Text style={[styles.qrLabel, { color: colors.mutedForeground }]}>{entry.ticketId}</Text>
           </View>
 
-          {/* Details Grid */}
           <View style={styles.detailGrid}>
-            <DetailItem label="Vehicle" value={entry.vehicleType.toUpperCase()} icon="truck" colors={colors} />
-            <DetailItem label="Number Plate" value={entry.numberPlate} icon="credit-card" colors={colors} />
-            <DetailItem label="Entry Time" value={formatTime(entry.entryTime)} icon="clock" colors={colors} />
-            <DetailItem label="Entry Date" value={formatDate(entry.entryTime)} icon="calendar" colors={colors} />
-            <DetailItem label="Rate" value={`₹${entry.amount}/hr`} icon="tag" colors={colors} />
+            <DetailItem label="Vehicle" value={entry.vehicleType.toUpperCase()} colors={colors} />
+            <DetailItem label="Number Plate" value={entry.numberPlate} colors={colors} />
+            <DetailItem label="Entry Time" value={formatTime(entry.entryTime)} colors={colors} />
+            <DetailItem label="Entry Date" value={formatDate(entry.entryTime)} colors={colors} />
+            <DetailItem label="Rate" value={`Rs ${entry.amount}/hr`} colors={colors} />
             <DetailItem
               label="Payment"
               value={entry.paymentType === "online" ? "Online / UPI" : "Cash / Offline"}
-              icon="credit-card"
               colors={colors}
             />
           </View>
 
-          {/* Payment Status */}
-          <View style={[
-            styles.paymentStatus,
-            { backgroundColor: entry.paymentStatus === "paid" ? colors.successLight : colors.warningLight },
-          ]}>
+          <View
+            style={[
+              styles.paymentStatus,
+              { backgroundColor: entry.paymentStatus === "paid" ? colors.successLight : colors.warningLight },
+            ]}
+          >
             <Feather
               name={entry.paymentStatus === "paid" ? "check-circle" : "alert-circle"}
               size={16}
               color={entry.paymentStatus === "paid" ? colors.success : colors.warning}
             />
-            <Text style={[
-              styles.paymentStatusText,
-              { color: entry.paymentStatus === "paid" ? colors.success : colors.warning },
-            ]}>
+            <Text
+              style={[
+                styles.paymentStatusText,
+                { color: entry.paymentStatus === "paid" ? colors.success : colors.warning },
+              ]}
+            >
               {entry.paymentStatus === "paid" ? "Payment Received" : "Payment Pending"}
             </Text>
           </View>
 
-          {/* Mobile */}
           {entry.customerMobile ? (
             <Text style={[styles.mobile, { color: colors.mutedForeground }]}>
               Customer: +91 {entry.customerMobile}
             </Text>
           ) : null}
 
-          {/* Attendant */}
           <Text style={[styles.mobile, { color: colors.mutedForeground }]}>
             Attendant: {entry.attendantName}
           </Text>
         </View>
       </View>
-
-      {/* Actions */}
-      {entry.paymentStatus === "pending" && (
-        <PrimaryButton
-          label="Mark Payment as Received"
-          onPress={handleMarkPaid}
-          variant="primary"
-        />
-      )}
 
       <PrimaryButton
         label="Share via WhatsApp"
@@ -179,7 +162,7 @@ export default function TicketScreen() {
   );
 }
 
-function DetailItem({ label, value, icon, colors }: { label: string; value: string; icon: any; colors: any }) {
+function DetailItem({ label, value, colors }: { label: string; value: string; colors: any }) {
   return (
     <View style={styles.detailItem}>
       <Text style={[styles.detailLabel, { color: colors.mutedForeground }]}>{label}</Text>

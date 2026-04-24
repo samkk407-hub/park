@@ -48,9 +48,9 @@ export const api = {
   exitVehicle: (id: string, token: string) =>
     req<{ entry: any }>(`/entries/${id}/exit`, { method: "PUT" }, token),
 
-  updatePayment: (id: string, paymentStatus: string, token: string) =>
+  updatePayment: (id: string, paymentStatus: string, token: string, paymentType?: string) =>
     req<{ entry: any }>(`/entries/${id}/payment`, {
-      method: "PUT", body: JSON.stringify({ paymentStatus }),
+      method: "PUT", body: JSON.stringify({ paymentStatus, ...(paymentType ? { paymentType } : {}) }),
     }, token),
 
   getStaff: (parkingId: string, token: string) =>
@@ -75,4 +75,35 @@ export const api = {
 
   getActivityLogs: (parkingId: string, token: string) =>
     req<{ logs: any[] }>(`/reports/activity?parkingId=${parkingId}&limit=50`, {}, token),
+
+  getAttendantCollections: (parkingId: string, token: string) =>
+    req<{ collections: any[]; ownerSummary: any }>(`/reports/attendant-collections?parkingId=${parkingId}`, {}, token),
+
+  settleAttendantCollection: (attendantId: string, parkingId: string, token: string) =>
+    req<{ success: boolean; settledCount: number; settledAmount: number }>(
+      `/reports/attendant-collections/${attendantId}/settle`,
+      { method: "POST", body: JSON.stringify({ parkingId }) },
+      token
+    ),
+
+  getBankingAccount: (parkingId: string, token: string) =>
+    req<{ bankAccount: any; walletSummary: any; recentSettlements: any[] }>(
+      `/banking/account?parkingId=${parkingId}`,
+      {},
+      token
+    ),
+
+  saveBankingAccount: (data: any, token: string) =>
+    req<{ bankAccount: any }>(
+      "/banking/account",
+      { method: "POST", body: JSON.stringify(data) },
+      token
+    ),
+
+  settleWalletToBank: (parkingId: string, token: string) =>
+    req<{ success: boolean; amount: number; transactionCount: number; settlement: any }>(
+      "/banking/settle-wallet",
+      { method: "POST", body: JSON.stringify({ parkingId }) },
+      token
+    ),
 };

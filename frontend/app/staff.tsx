@@ -12,9 +12,23 @@ import { useColors } from "@/hooks/useColors";
 import { FormInput } from "@/components/FormInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { api } from "@/lib/api";
+
+interface AttendantCollection {
+  attendantId: string;
+  attendantName: string;
+  mobile: string;
+  totalHandled: number;
+  pendingCount: number;
+  pendingAmount: number;
+  offlineCollected: number;
+  onlineCollected: number;
+  unsettledAmount: number;
+  settledAmount: number;
+}
 
 export default function StaffScreen() {
-  const { user, staff, addStaff, updateStaff, deleteStaff, refreshSession } = useApp();
+  const { user, token, parking, staff, addStaff, updateStaff, deleteStaff, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
@@ -24,13 +38,39 @@ export default function StaffScreen() {
   const [form, setForm] = useState({ name: "", mobile: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [settlingId, setSettlingId] = useState<string | null>(null);
+  const [collections, setCollections] = useState<Record<string, AttendantCollection>>({});
+  const [ownerSummary, setOwnerSummary] = useState({
+    ownerOnlineCollected: 0,
+    ownerOfflineCollected: 0,
+    attendantUnsettled: 0,
+  });
 
   const isOwner = user?.role === "owner" || user?.role === "superadmin";
 
   useFocusEffect(
     React.useCallback(() => {
-      void refreshSession();
-    }, [refreshSession])
+      let active = true;
+
+      const load = async () => {
+        await refreshSession();
+        if (!token || !parking) return;
+        const response = await api.getAttendantCollections(parking.id, token);
+        if (!active) return;
+
+        setCollections(
+          Object.fromEntries(
+            response.collections.map((item: AttendantCollection) => [item.attendantId, item])
+          )
+        );
+        setOwnerSummary(response.ownerSummary);
+      };
+
+      void load();
+      return () => {
+        active = false;
+      };
+    }, [parking, refreshSession, token])
   );
 
   const openAdd = () => {
@@ -63,6 +103,15 @@ export default function StaffScreen() {
         await updateStaff(editingStaff.id, { name: form.name });
       } else {
         await addStaff({ name: form.name, mobile: form.mobile, role: "attendant", isActive: true });
+      }
+      if (token && parking) {
+        const response = await api.getAttendantCollections(parking.id, token);
+        setCollections(
+          Object.fromEntries(
+            response.collections.map((item: AttendantCollection) => [item.attendantId, item])
+          )
+        );
+        setOwnerSummary(response.ownerSummary);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setModalVisible(false);
@@ -102,6 +151,47 @@ export default function StaffScreen() {
   const activeStaff = staff.filter(s => s.isActive);
   const inactiveStaff = staff.filter(s => !s.isActive);
 
+  const handleSettle = (staffMember: Staff) => {
+    if (!token || !parking) return;
+
+    const summary = collections[staffMember.id];
+    const amount = summary?.unsettledAmount || 0;
+    if (amount <= 0) {
+      Alert.alert("Nothing to collect", "This attendant has no unsettled cash to collect.");
+      return;
+    }
+
+    Alert.alert(
+      "Collect Cash",
+      `Collect Rs ${amount} from ${staffMember.name} and mark it settled?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Collect",
+          onPress: async () => {
+            try {
+              setSettlingId(staffMember.id);
+              const result = await api.settleAttendantCollection(staffMember.id, parking.id, token);
+              const response = await api.getAttendantCollections(parking.id, token);
+              setCollections(
+                Object.fromEntries(
+                  response.collections.map((item: AttendantCollection) => [item.attendantId, item])
+                )
+              );
+              setOwnerSummary(response.ownerSummary);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert("Collected", `Rs ${result.settledAmount} marked as collected by owner.`);
+            } catch (e: any) {
+              Alert.alert("Error", e.message || "Failed to settle cash");
+            } finally {
+              setSettlingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <ScreenHeader
@@ -117,14 +207,34 @@ export default function StaffScreen() {
         }
       />
 
+      {isOwner && (
+        <View style={{ paddingHorizontal: 16, paddingTop: 16, gap: 10 }}>
+          <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Owner Collection Summary</Text>
+            <Text style={[styles.summaryLine, { color: colors.mutedForeground }]}>
+              Direct Online: Rs {ownerSummary.ownerOnlineCollected}
+            </Text>
+            <Text style={[styles.summaryLine, { color: colors.mutedForeground }]}>
+              Owner Offline: Rs {ownerSummary.ownerOfflineCollected}
+            </Text>
+            <Text style={[styles.summaryLine, { color: colors.warning }]}>
+              Attendant Cash Pending: Rs {ownerSummary.attendantUnsettled}
+            </Text>
+          </View>
+        </View>
+      )}
+
       <FlatList
         data={activeStaff}
         keyExtractor={item => item.id}
         renderItem={({ item }) => (
           <StaffCard
             staff={item}
+            collection={collections[item.id]}
             onEdit={() => openEdit(item)}
             onDeactivate={() => handleDeactivate(item)}
+            onSettle={() => handleSettle(item)}
+            settling={settlingId === item.id}
             colors={colors}
             isOwner={isOwner}
           />
@@ -142,8 +252,11 @@ export default function StaffScreen() {
                 <StaffCard
                   key={s.id}
                   staff={s}
+                  collection={collections[s.id]}
                   onEdit={() => {}}
                   onDeactivate={() => {}}
+                  onSettle={() => {}}
+                  settling={false}
                   colors={colors}
                   isOwner={false}
                   inactive
@@ -224,31 +337,77 @@ export default function StaffScreen() {
   );
 }
 
-function StaffCard({ staff, onEdit, onDeactivate, colors, isOwner, inactive }: {
-  staff: Staff; onEdit: () => void; onDeactivate: () => void;
-  colors: any; isOwner: boolean; inactive?: boolean;
+function StaffCard({ staff, collection, onEdit, onDeactivate, onSettle, settling, colors, isOwner, inactive }: {
+  staff: Staff;
+  collection?: AttendantCollection;
+  onEdit: () => void;
+  onDeactivate: () => void;
+  onSettle: () => void;
+  settling: boolean;
+  colors: any;
+  isOwner: boolean;
+  inactive?: boolean;
 }) {
+  const unsettledAmount = collection?.unsettledAmount || 0;
+
   return (
     <View style={[styles.staffCard, { backgroundColor: colors.card, borderColor: colors.border, opacity: inactive ? 0.5 : 1 }]}>
-      <View style={[styles.staffAvatar, { backgroundColor: colors.accent }]}>
-        <Text style={[styles.staffAvatarText, { color: colors.primary }]}>
-          {staff.name.charAt(0).toUpperCase()}
-        </Text>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.staffName, { color: colors.foreground }]}>{staff.name}</Text>
-        <Text style={[styles.staffMobile, { color: colors.mutedForeground }]}>+91 {staff.mobile}</Text>
-        <View style={[styles.rolePill, { backgroundColor: colors.accent }]}>
-          <Text style={[styles.rolePillText, { color: colors.primary }]}>{staff.role.toUpperCase()}</Text>
+      <View style={styles.staffTopRow}>
+        <View style={[styles.staffAvatar, { backgroundColor: colors.accent }]}>
+          <Text style={[styles.staffAvatarText, { color: colors.primary }]}>
+            {staff.name.charAt(0).toUpperCase()}
+          </Text>
         </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.staffName, { color: colors.foreground }]}>{staff.name}</Text>
+          <Text style={[styles.staffMobile, { color: colors.mutedForeground }]}>+91 {staff.mobile}</Text>
+          <View style={[styles.rolePill, { backgroundColor: colors.accent }]}>
+            <Text style={[styles.rolePillText, { color: colors.primary }]}>{staff.role.toUpperCase()}</Text>
+          </View>
+          <Text style={[styles.staffMeta, { color: colors.mutedForeground }]}>
+            Pending: Rs {collection?.pendingAmount || 0} | Cash to owner: Rs {collection?.unsettledAmount || 0}
+          </Text>
+        </View>
+        {!inactive && isOwner && (
+          <View style={styles.actions}>
+            <TouchableOpacity onPress={onEdit} style={[styles.actionBtn, { backgroundColor: colors.accent }]}>
+              <Feather name="edit-2" size={15} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onDeactivate} style={[styles.actionBtn, { backgroundColor: colors.warningLight }]}>
+              <Feather name="user-minus" size={15} color={colors.warning} />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
       {!inactive && isOwner && (
-        <View style={styles.actions}>
-          <TouchableOpacity onPress={onEdit} style={[styles.actionBtn, { backgroundColor: colors.accent }]}>
-            <Feather name="edit-2" size={15} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onDeactivate} style={[styles.actionBtn, { backgroundColor: colors.warningLight }]}>
-            <Feather name="user-minus" size={15} color={colors.warning} />
+        <View style={styles.collectRow}>
+          <TouchableOpacity
+            onPress={onSettle}
+            style={[
+              styles.collectBtn,
+              {
+                backgroundColor: unsettledAmount > 0 ? colors.successLight : colors.muted,
+                borderColor: unsettledAmount > 0 ? colors.success : colors.border,
+                opacity: settling ? 0.7 : 1,
+              },
+            ]}
+            disabled={settling}
+          >
+            <Feather
+              name={unsettledAmount > 0 ? "check-circle" : "check"}
+              size={15}
+              color={unsettledAmount > 0 ? colors.success : colors.mutedForeground}
+            />
+            <Text
+              style={[
+                styles.collectBtnText,
+                { color: unsettledAmount > 0 ? colors.success : colors.mutedForeground },
+              ]}
+            >
+              {unsettledAmount > 0
+                ? `Collect Cash Rs ${unsettledAmount}`
+                : "No Cash Pending"}
+            </Text>
           </TouchableOpacity>
         </View>
       )}
@@ -271,12 +430,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   staffCard: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: 12,
     borderRadius: 12,
     borderWidth: 1,
     padding: 14,
+  },
+  staffTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   staffAvatar: {
     width: 44,
@@ -288,6 +450,7 @@ const styles = StyleSheet.create({
   staffAvatarText: { fontSize: 18, fontFamily: "Inter_700Bold" },
   staffName: { fontSize: 15, fontFamily: "Inter_600SemiBold" },
   staffMobile: { fontSize: 13, fontFamily: "Inter_400Regular", marginTop: 2 },
+  staffMeta: { fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 6 },
   rolePill: {
     alignSelf: "flex-start",
     borderRadius: 4,
@@ -303,6 +466,23 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
+  },
+  collectRow: {
+    marginTop: 4,
+  },
+  collectBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  collectBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
   },
   empty: { alignItems: "center", gap: 14, paddingTop: 60 },
   emptyText: { fontSize: 15, fontFamily: "Inter_400Regular" },
@@ -333,4 +513,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalTitle: { fontSize: 18, fontFamily: "Inter_700Bold" },
+  summaryCard: {
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 14,
+    gap: 6,
+  },
+  summaryTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  summaryLine: {
+    fontSize: 13,
+    fontFamily: "Inter_400Regular",
+  },
 });

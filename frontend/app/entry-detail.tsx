@@ -14,7 +14,7 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 
 export default function EntryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { entries, parking, updatePaymentStatus, exitVehicle, refreshSession } = useApp();
+  const { entries, parking, exitVehicle, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -52,12 +52,6 @@ export default function EntryDetailScreen() {
       : entry.vehicleType === "car" ? parking.carRate
       : parking.otherRate;
     return hours * rate;
-  };
-
-  const handleMarkPaid = async () => {
-    await updatePaymentStatus(entry.id, "paid");
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Done", "Payment marked as received");
   };
 
   const handleExit = () => {
@@ -140,9 +134,6 @@ export default function EntryDetailScreen() {
         </View>
 
         {/* Actions */}
-        {!isPaid && (
-          <PrimaryButton label="Mark Payment as Received" onPress={handleMarkPaid} />
-        )}
         {isInside && (
           <PrimaryButton label="Process Exit" onPress={handleExit} variant="secondary" />
         )}
