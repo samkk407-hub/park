@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
@@ -13,7 +14,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 
 export default function StaffScreen() {
-  const { user, staff, addStaff, updateStaff, deleteStaff } = useApp();
+  const { user, staff, addStaff, updateStaff, deleteStaff, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
@@ -25,6 +26,12 @@ export default function StaffScreen() {
   const [loading, setLoading] = useState(false);
 
   const isOwner = user?.role === "owner" || user?.role === "superadmin";
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   const openAdd = () => {
     setEditingStaff(null);
@@ -232,7 +239,7 @@ function StaffCard({ staff, onEdit, onDeactivate, colors, isOwner, inactive }: {
         <Text style={[styles.staffName, { color: colors.foreground }]}>{staff.name}</Text>
         <Text style={[styles.staffMobile, { color: colors.mutedForeground }]}>+91 {staff.mobile}</Text>
         <View style={[styles.rolePill, { backgroundColor: colors.accent }]}>
-          <Text style={[styles.rolePillText, { color: colors.primary }]}>ATTENDANT</Text>
+          <Text style={[styles.rolePillText, { color: colors.primary }]}>{staff.role.toUpperCase()}</Text>
         </View>
       </View>
       {!inactive && isOwner && (

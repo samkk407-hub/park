@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useMemo } from "react";
 import {
   Platform, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View
@@ -12,7 +13,7 @@ import { EntryCard } from "@/components/EntryCard";
 import { useRouter } from "expo-router";
 
 export default function DashboardScreen() {
-  const { user, parking, entries, refreshData } = useApp();
+  const { user, parking, entries, refreshData, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -50,6 +51,12 @@ export default function DashboardScreen() {
     await refreshData();
     setRefreshing(false);
   };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   if (!parking) return null;
 

@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
@@ -15,13 +16,19 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 export default function ExitScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { entries, parking, exitVehicle, updatePaymentStatus } = useApp();
+  const { entries, parking, exitVehicle, updatePaymentStatus, refreshSession } = useApp();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
 
   const [search, setSearch] = useState("");
   const [selectedEntry, setSelectedEntry] = useState<VehicleEntry | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   const insideEntries = useMemo(() =>
     entries.filter(e => e.status === "inside"),

@@ -1,8 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import React from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useColors } from "@/hooks/useColors";
 import { VehicleEntry } from "@/context/AppContext";
+import { useColors } from "@/hooks/useColors";
 
 interface EntryCardProps {
   entry: VehicleEntry;
@@ -34,21 +34,54 @@ export function EntryCard({ entry, onPress }: EntryCardProps) {
       activeOpacity={0.7}
     >
       <View style={styles.row}>
-        <View style={[styles.vehicleIcon, { backgroundColor: isInside ? colors.accentForeground + "20" : colors.muted }]}>
-          <Feather name={VEHICLE_ICONS[entry.vehicleType] || "box"} size={18} color={isInside ? colors.primary : colors.mutedForeground} />
+        <View
+          style={[
+            styles.vehicleIcon,
+            { backgroundColor: isInside ? colors.accentForeground + "20" : colors.muted },
+          ]}
+        >
+          <Feather
+            name={VEHICLE_ICONS[entry.vehicleType] || "box"}
+            size={18}
+            color={isInside ? colors.primary : colors.mutedForeground}
+          />
         </View>
         <View style={styles.info}>
-          <Text style={[styles.plate, { color: colors.foreground }]}>{entry.numberPlate.toUpperCase()}</Text>
-          <Text style={[styles.sub, { color: colors.mutedForeground }]}>{entry.vehicleType.toUpperCase()} · {entry.ticketId}</Text>
+          <Text style={[styles.plate, { color: colors.foreground }]}>
+            {entry.numberPlate.toUpperCase()}
+          </Text>
+          <Text style={[styles.sub, { color: colors.mutedForeground }]}>
+            {entry.vehicleType.toUpperCase()} | {entry.ticketId}
+          </Text>
         </View>
         <View style={styles.right}>
-          <View style={[styles.badge, { backgroundColor: isInside ? colors.successLight : colors.muted }]}>
-            <Text style={[styles.badgeText, { color: isInside ? colors.success : colors.mutedForeground }]}>
+          <View
+            style={[
+              styles.badge,
+              { backgroundColor: isInside ? colors.successLight : colors.muted },
+            ]}
+          >
+            <Text
+              style={[
+                styles.badgeText,
+                { color: isInside ? colors.success : colors.mutedForeground },
+              ]}
+            >
               {isInside ? "INSIDE" : "EXITED"}
             </Text>
           </View>
-          <View style={[styles.badge, { backgroundColor: isPaid ? colors.successLight : colors.warningLight, marginTop: 4 }]}>
-            <Text style={[styles.badgeText, { color: isPaid ? colors.success : colors.warning }]}>
+          <View
+            style={[
+              styles.badge,
+              {
+                backgroundColor: isPaid ? colors.successLight : colors.warningLight,
+                marginTop: 4,
+              },
+            ]}
+          >
+            <Text
+              style={[styles.badgeText, { color: isPaid ? colors.success : colors.warning }]}
+            >
               {isPaid ? "PAID" : "PENDING"}
             </Text>
           </View>
@@ -65,17 +98,28 @@ export function EntryCard({ entry, onPress }: EntryCardProps) {
           </Text>
         </View>
         <View style={styles.footerItem}>
-          <Feather name="timer" size={12} color={colors.mutedForeground} />
-          <Text style={[styles.footerText, { color: colors.mutedForeground }]}>{durationText}</Text>
-        </View>
-        <View style={styles.footerItem}>
-          <Feather name="indian-rupee" size={12} color={colors.mutedForeground} />
-          <Text style={[styles.footerText, { color: colors.foreground, fontFamily: "Inter_600SemiBold" }]}>
-            ₹{entry.amount}
+          <Feather name="watch" size={12} color={colors.mutedForeground} />
+          <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
+            {durationText}
           </Text>
         </View>
         <View style={styles.footerItem}>
-          <Feather name={entry.paymentType === "online" ? "wifi" : "dollar-sign"} size={12} color={colors.mutedForeground} />
+          <Feather name="credit-card" size={12} color={colors.mutedForeground} />
+          <Text
+            style={[
+              styles.footerText,
+              { color: colors.foreground, fontFamily: "Inter_600SemiBold" },
+            ]}
+          >
+            Rs {entry.amount}
+          </Text>
+        </View>
+        <View style={styles.footerItem}>
+          <Feather
+            name={entry.paymentType === "online" ? "wifi" : "dollar-sign"}
+            size={12}
+            color={colors.mutedForeground}
+          />
           <Text style={[styles.footerText, { color: colors.mutedForeground }]}>
             {entry.paymentType === "online" ? "Online" : "Cash"}
           </Text>
@@ -87,7 +131,11 @@ export function EntryCard({ entry, onPress }: EntryCardProps) {
 
 function formatTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
+  return d.toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
 }
 
 function formatDuration(minutes: number): string {

@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
@@ -19,11 +20,17 @@ const ACTION_CONFIG: Record<string, { icon: any; color: string }> = {
 };
 
 export default function LogsScreen() {
-  const { activityLogs } = useApp();
+  const { activityLogs, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const isWeb = Platform.OS === "web";
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   const renderLog = ({ item }: { item: ActivityLog }) => {
     const cfg = ACTION_CONFIG[item.action] || { icon: "activity", color: colors.primary };

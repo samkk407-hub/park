@@ -6,7 +6,7 @@ const router = Router();
 
 router.get("/", authMiddleware, async (req: Request, res: Response) => {
   const { parkingId } = req.query;
-  const staff = await User.find({ parkingId }).sort({ createdAt: -1 });
+  const staff = await User.find({ parkingId, role: "attendant" }).sort({ createdAt: -1 });
   return res.json({ staff });
 });
 

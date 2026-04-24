@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
@@ -12,7 +13,7 @@ import { EntryCard } from "@/components/EntryCard";
 type FilterTab = "all" | "inside" | "exited";
 
 export default function EntriesScreen() {
-  const { entries } = useApp();
+  const { entries, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -40,6 +41,12 @@ export default function EntriesScreen() {
     { key: "inside", label: "Inside", count: entries.filter(e => e.status === "inside").length },
     { key: "exited", label: "Exited", count: entries.filter(e => e.status === "exited").length },
   ];
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>

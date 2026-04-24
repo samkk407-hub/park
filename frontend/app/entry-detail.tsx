@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo } from "react";
@@ -13,13 +14,19 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 
 export default function EntryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { entries, parking, updatePaymentStatus, exitVehicle } = useApp();
+  const { entries, parking, updatePaymentStatus, exitVehicle, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const isWeb = Platform.OS === "web";
 
   const entry = useMemo(() => entries.find(e => e.id === id), [entries, id]);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   if (!entry || !parking) {
     return (

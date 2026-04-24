@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
 export type UserRole = "admin" | "owner" | "attendant" | "superadmin";
@@ -94,6 +94,7 @@ interface AppContextType {
   deleteStaff: (id: string) => Promise<void>;
   refreshData: () => Promise<void>;
   refreshEntries: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -154,6 +155,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const refreshSessionRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     loadSession();
@@ -236,13 +238,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const setupParking = useCallback(async (data: Omit<ParkingProfile, "id" | "ownerId">) => {
     if (!token || !user) throw new Error("Not authenticated");
-    const { parking: p } = await api.createParking({ ...data, ownerName: data.ownerName || user.name }, token);
+
+    const payload = { ...data, ownerName: data.ownerName || user.name };
+    const response = parking
+      ? await api.updateParking(parking.id, payload, token)
+      : await api.createParking(payload, token);
+    const { parking: p } = response;
     const mapped = mapParking(p);
     setParking(mapped);
     const updatedUser = { ...user, parkingId: mapped.id };
     setUser(updatedUser);
     await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-  }, [token, user]);
+  }, [token, user, parking]);
 
   const addEntry = useCallback(async (data: any): Promise<VehicleEntry> => {
     if (!token || !parking) throw new Error("Not authenticated");
@@ -294,12 +301,58 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await loadEntries(parking.id, token);
   }, [token, parking]);
 
+  const refreshSession = useCallback(async () => {
+    if (!token) return;
+    if (refreshSessionRef.current) {
+      await refreshSessionRef.current;
+      return;
+    }
+
+    const pendingRefresh = (async () => {
+      const { user: freshUser, parking: freshParking } = await api.getMe(token);
+      const mappedUser: User = {
+        id: freshUser._id || freshUser.id,
+        name: freshUser.name,
+        mobile: freshUser.mobile,
+        role: freshUser.role,
+        parkingId: freshUser.parkingId,
+      };
+
+      setUser(mappedUser);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(mappedUser));
+
+      if (!freshParking) {
+        setParking(null);
+        setEntries([]);
+        setStaff([]);
+        setActivityLogs([]);
+        return;
+      }
+
+      const mappedParking = mapParking(freshParking);
+      setParking(mappedParking);
+      await Promise.all([
+        loadEntries(mappedParking.id, token),
+        loadStaff(mappedParking.id, token),
+        loadLogs(mappedParking.id, token),
+      ]);
+    })();
+
+    refreshSessionRef.current = pendingRefresh;
+
+    try {
+      await pendingRefresh;
+    } finally {
+      refreshSessionRef.current = null;
+    }
+  }, [token]);
+
   return (
     <AppContext.Provider value={{
       user, token, parking, entries, staff, activityLogs, isLoading,
       loginWithToken, logout, setupParking, addEntry, exitVehicle,
       updatePaymentStatus, addStaff, updateStaff, deleteStaff,
-      refreshData, refreshEntries,
+      refreshData, refreshEntries, refreshSession,
     }}>
       {children}
     </AppContext.Provider>

@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert, KeyboardAvoidingView, Platform,
   ScrollView, StyleSheet, Text, View
@@ -16,6 +16,8 @@ interface Errors {
   name?: string;
   ownerName?: string;
   location?: string;
+  city?: string;
+  state?: string;
   bikeRate?: string;
   carRate?: string;
   totalCapacity?: string;
@@ -24,13 +26,15 @@ interface Errors {
 export default function SetupScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { setupParking } = useApp();
+  const { parking, setupParking } = useApp();
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
     ownerName: "",
     location: "",
+    city: "",
+    state: "",
     bikeRate: "",
     carRate: "",
     otherRate: "",
@@ -42,6 +46,26 @@ export default function SetupScreen() {
   });
   const [errors, setErrors] = useState<Errors>({});
 
+  useEffect(() => {
+    if (!parking) return;
+
+    setForm({
+      name: parking.name || "",
+      ownerName: parking.ownerName || "",
+      location: parking.location || "",
+      city: parking.city || "",
+      state: parking.state || "",
+      bikeRate: parking.bikeRate ? String(parking.bikeRate) : "",
+      carRate: parking.carRate ? String(parking.carRate) : "",
+      otherRate: parking.otherRate ? String(parking.otherRate) : "",
+      workingHours: parking.workingHours || "8:00 AM - 10:00 PM",
+      totalCapacity: parking.totalCapacity ? String(parking.totalCapacity) : "",
+      bikeCapacity: parking.bikeCapacity ? String(parking.bikeCapacity) : "",
+      carCapacity: parking.carCapacity ? String(parking.carCapacity) : "",
+      notes: parking.notes || "",
+    });
+  }, [parking]);
+
   const set = (key: string, val: string) => {
     setForm(prev => ({ ...prev, [key]: val }));
     setErrors(prev => ({ ...prev, [key]: undefined }));
@@ -52,6 +76,8 @@ export default function SetupScreen() {
     if (!form.name.trim()) newErrors.name = "Parking name is required";
     if (!form.ownerName.trim()) newErrors.ownerName = "Owner name is required";
     if (!form.location.trim()) newErrors.location = "Location is required";
+    if (!form.city.trim()) newErrors.city = "City is required";
+    if (!form.state.trim()) newErrors.state = "State is required";
     if (!form.bikeRate || isNaN(Number(form.bikeRate))) newErrors.bikeRate = "Valid bike rate required";
     if (!form.carRate || isNaN(Number(form.carRate))) newErrors.carRate = "Valid car rate required";
     if (!form.totalCapacity || isNaN(Number(form.totalCapacity))) newErrors.totalCapacity = "Total capacity required";
@@ -67,6 +93,8 @@ export default function SetupScreen() {
         name: form.name.trim(),
         ownerName: form.ownerName.trim(),
         location: form.location.trim(),
+        city: form.city.trim(),
+        state: form.state.trim(),
         bikeRate: Number(form.bikeRate),
         carRate: Number(form.carRate),
         otherRate: Number(form.otherRate) || Number(form.carRate),
@@ -88,7 +116,10 @@ export default function SetupScreen() {
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <ScreenHeader title="Parking Setup" subtitle="Configure your parking area" />
+        <ScreenHeader
+          title={parking ? "Complete Parking Details" : "Parking Setup"}
+          subtitle={parking ? "Update the remaining parking information" : "Configure your parking area"}
+        />
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
@@ -126,6 +157,30 @@ export default function SetupScreen() {
               required
               multiline
             />
+            <View style={styles.row}>
+              <View style={{ flex: 1 }}>
+                <FormInput
+                  label="City"
+                  placeholder="e.g. Indore"
+                  value={form.city}
+                  onChangeText={v => set("city", v)}
+                  error={errors.city}
+                  icon="map-pin"
+                  required
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <FormInput
+                  label="State"
+                  placeholder="e.g. Madhya Pradesh"
+                  value={form.state}
+                  onChangeText={v => set("state", v)}
+                  error={errors.state}
+                  icon="flag"
+                  required
+                />
+              </View>
+            </View>
             <FormInput
               label="Working Hours"
               placeholder="e.g. 8:00 AM - 10:00 PM"
@@ -227,7 +282,11 @@ export default function SetupScreen() {
             />
           </View>
 
-          <PrimaryButton label="Save & Start" onPress={handleSave} loading={loading} />
+          <PrimaryButton
+            label={parking ? "Save Details" : "Save & Start"}
+            onPress={handleSave}
+            loading={loading}
+          />
           <View style={{ height: 20 }} />
         </ScrollView>
       </View>

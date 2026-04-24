@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useMemo, useState } from "react";
 import {
   Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert
@@ -10,7 +11,7 @@ import { useColors } from "@/hooks/useColors";
 type DateRange = "today" | "week" | "month" | "all";
 
 export default function ReportsScreen() {
-  const { entries, parking } = useApp();
+  const { entries, parking, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
@@ -60,6 +61,12 @@ export default function ReportsScreen() {
   const handleExport = () => {
     Alert.alert("Export", "CSV export would be implemented with a file system integration.\n\nIn production, this generates a CSV file with all entries.");
   };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   return (
     <ScrollView

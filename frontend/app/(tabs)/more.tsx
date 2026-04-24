@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React from "react";
@@ -10,7 +11,7 @@ import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 
 export default function MoreScreen() {
-  const { user, parking, logout } = useApp();
+  const { user, parking, logout, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -36,6 +37,12 @@ export default function MoreScreen() {
       },
     ]);
   };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void refreshSession();
+    }, [refreshSession])
+  );
 
   const MenuItem = ({
     icon, label, subtitle, onPress, color, disabled, badge,
@@ -153,13 +160,6 @@ export default function MoreScreen() {
               label="Staff Management"
               subtitle="Add and manage parking staff"
               onPress={() => router.push("/staff")}
-            />
-            <MenuItem
-              icon="settings"
-              label="Parking Settings"
-              subtitle="Edit rates and capacity"
-              onPress={() => router.push("/setup")}
-              color={colors.info}
             />
           </View>
         </>

@@ -18,6 +18,7 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
   });
   user.parkingId = parking._id.toString();
   user.role = "owner";
+  user.name = ownerName || user.name;
   await user.save();
   return res.status(201).json({ parking });
 });
