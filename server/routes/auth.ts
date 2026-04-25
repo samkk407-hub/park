@@ -7,6 +7,8 @@ import { getJwtSecret } from "../lib/config";
 
 const router = Router();
 const SUPER_ADMIN_MOBILE = process.env["SUPER_ADMIN_MOBILE"] || "9999999999";
+const APP_ENV = process.env["APP_ENV"] || "development";
+const isDevelopment = ["development", "dev", "developer"].includes(APP_ENV.toLowerCase());
 
 const otpStore = new Map<string, { otp: string; expires: number; attempts: number }>();
 const otpSendTracker = new Map<string, { count: number; resetAt: number }>();
@@ -29,13 +31,13 @@ router.post("/send-otp", async (req: Request, res: Response) => {
 
   const otp = randomInt(100000, 1000000).toString();
   otpStore.set(mobile, { otp, expires: now + 5 * 60 * 1000, attempts: 0 });
-  if (process.env["NODE_ENV"] !== "production") {
+  if (isDevelopment) {
     console.log(`OTP for ${mobile}: ${otp}`);
   }
   return res.json({
     success: true,
     message: "OTP sent",
-    devOtp: process.env["NODE_ENV"] !== "production" ? otp : undefined,
+    devOtp: isDevelopment ? otp : undefined,
   });
 });
 
