@@ -1,7 +1,8 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { useColorScheme } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, useColorScheme, View } from "react-native";
 import { api } from "@/lib/api";
+import colorTokens from "@/constants/colors";
 
 export type UserRole = "admin" | "owner" | "attendant" | "superadmin";
 
@@ -113,8 +114,10 @@ interface AppContextType {
   staff: Staff[];
   activityLogs: ActivityLog[];
   isLoading: boolean;
+  isDataLoading: boolean;
   themeMode: "light" | "dark" | "system";
   resolvedTheme: "light" | "dark";
+  showToast: (message: string, type?: ToastType) => void;
   loginWithToken: (token: string, user: User, parking: any) => Promise<void>;
   logout: () => Promise<void>;
   setupParking: (parking: Omit<ParkingProfile, "id" | "ownerId">) => Promise<void>;
@@ -132,6 +135,8 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | null>(null);
+type ToastType = "success" | "error" | "info";
+type ToastState = { message: string; type: ToastType } | null;
 
 const STORAGE_KEYS = {
   TOKEN: "@parkease_token",
@@ -211,6 +216,10 @@ function mapParking(p: any): ParkingProfile {
   };
 }
 
+function canLoadOwnerData(role?: UserRole): boolean {
+  return role === "owner" || role === "superadmin" || role === "admin";
+}
+
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const systemColorScheme = useColorScheme();
   const [user, setUser] = useState<User | null>(null);
@@ -220,8 +229,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDataLoading, setIsDataLoading] = useState(false);
+  const [toast, setToast] = useState<ToastState>(null);
   const [themeMode, setThemeModeState] = useState<"light" | "dark" | "system">("system");
   const refreshSessionRef = useRef<Promise<void> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolvedTheme: "light" | "dark" =
     themeMode === "system" ? (systemColorScheme === "dark" ? "dark" : "light") : themeMode;
 
@@ -229,7 +241,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     loadSession();
   }, []);
 
+  const showToast = useCallback((message: string, type: ToastType = "info") => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, type });
+    toastTimerRef.current = setTimeout(() => setToast(null), 2600);
+  }, []);
+
+  const logAndLogoutForError = useCallback(async (area: string, error: unknown) => {
+    const message = error instanceof Error ? error.message : "App error";
+    const stack = error instanceof Error ? error.stack : undefined;
+
+    await api.logFrontendError({
+      area,
+      message,
+      stack,
+      metadata: {
+        userId: user?.id,
+        userRole: user?.role,
+        parkingId: parking?.id,
+      },
+    });
+
+    setUser(null);
+    setToken(null);
+    setParking(null);
+    setEntries([]);
+    setStaff([]);
+    setActivityLogs([]);
+    await AsyncStorage.multiRemove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USER, STORAGE_KEYS.PARKING]);
+    showToast("App me dikkat aayi. Please re-login karo.", "error");
+  }, [parking?.id, showToast, user?.id, user?.role]);
+
   const loadSession = async () => {
+    setIsDataLoading(true);
     try {
       const [savedToken, savedUser, savedTheme] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.TOKEN),
@@ -251,14 +295,25 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           const p = mapParking(freshParking);
           setParking(p);
           await loadEntries(p.id, savedToken);
-          await loadStaff(p.id, savedToken);
-          await loadLogs(p.id, savedToken);
+          if (canLoadOwnerData(u.role)) {
+            await loadStaff(p.id, savedToken);
+            await loadLogs(p.id, savedToken);
+          } else {
+            setStaff([]);
+            setActivityLogs([]);
+          }
         }
       }
     } catch (e) {
       console.error("Session load error:", e);
-      await AsyncStorage.multiRemove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USER]);
+      await api.logFrontendError({
+        area: "session.load",
+        message: e instanceof Error ? e.message : "Session load error",
+        stack: e instanceof Error ? e.stack : undefined,
+      });
+      await AsyncStorage.multiRemove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USER, STORAGE_KEYS.PARKING]);
     } finally {
+      setIsDataLoading(false);
       setIsLoading(false);
     }
   };
@@ -267,36 +322,60 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     try {
       const { entries: data } = await api.getEntries(parkingId, t, { limit: "100" });
       setEntries(data.map(mapEntry));
-    } catch (e) { console.error("Load entries:", e); }
+    } catch (e) {
+      console.error("Load entries:", e);
+      throw e;
+    }
   };
 
   const loadStaff = async (parkingId: string, t: string) => {
     try {
       const { staff: data } = await api.getStaff(parkingId, t);
       setStaff(data.map((s: any) => ({ id: s._id || s.id, name: s.name, mobile: s.mobile, role: s.role, parkingId: s.parkingId, isActive: s.isActive, createdAt: s.createdAt })));
-    } catch (e) { console.error("Load staff:", e); }
+    } catch (e) {
+      console.error("Load staff:", e);
+      throw e;
+    }
   };
 
   const loadLogs = async (parkingId: string, t: string) => {
     try {
       const { logs } = await api.getActivityLogs(parkingId, t);
       setActivityLogs(logs.map((l: any) => ({ id: l._id || l.id, userId: l.userId, userName: l.userName, action: l.action, details: l.details, timestamp: l.timestamp, parkingId: l.parkingId })));
-    } catch (e) { console.error("Load logs:", e); }
+    } catch (e) {
+      console.error("Load logs:", e);
+      throw e;
+    }
   };
 
   const loginWithToken = useCallback(async (newToken: string, newUser: User, newParking: any) => {
-    setToken(newToken);
-    setUser(newUser);
-    await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, newToken);
-    await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
-    if (newParking) {
-      const p = mapParking(newParking);
-      setParking(p);
-      await loadEntries(p.id, newToken);
-      await loadStaff(p.id, newToken);
-      await loadLogs(p.id, newToken);
+    try {
+      setIsDataLoading(true);
+      setToken(newToken);
+      setUser(newUser);
+      await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, newToken);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newUser));
+      if (newParking) {
+        const p = mapParking(newParking);
+        setParking(p);
+        await loadEntries(p.id, newToken);
+        if (canLoadOwnerData(newUser.role)) {
+          await loadStaff(p.id, newToken);
+          await loadLogs(p.id, newToken);
+        } else {
+          setStaff([]);
+          setActivityLogs([]);
+        }
+      }
+      showToast("Login successful", "success");
+    } catch (e: any) {
+      showToast(e.message || "Login failed", "error");
+      await logAndLogoutForError("session.loginWithToken", e);
+      throw e;
+    } finally {
+      setIsDataLoading(false);
     }
-  }, []);
+  }, [logAndLogoutForError, showToast]);
 
   const setThemeMode = useCallback(async (mode: "light" | "dark" | "system") => {
     setThemeModeState(mode);
@@ -317,84 +396,152 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setStaff([]);
     setActivityLogs([]);
     await AsyncStorage.multiRemove([STORAGE_KEYS.TOKEN, STORAGE_KEYS.USER, STORAGE_KEYS.PARKING]);
-  }, []);
+    showToast("Signed out", "info");
+  }, [showToast]);
 
   const setupParking = useCallback(async (data: Omit<ParkingProfile, "id" | "ownerId">) => {
     if (!token || !user) throw new Error("Not authenticated");
 
-    const payload = { ...data, ownerName: data.ownerName || user.name };
-    const response = parking
-      ? await api.updateParking(parking.id, payload, token)
-      : await api.createParking(payload, token);
-    const { parking: p } = response;
-    const mapped = mapParking(p);
-    setParking(mapped);
-    const updatedUser = {
-      ...user,
-      name: mapped.ownerName || user.name,
-      parkingId: mapped.id,
-    };
-    setUser(updatedUser);
-    await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
-  }, [token, user, parking]);
+    try {
+      const payload = { ...data, ownerName: data.ownerName || user.name };
+      const response = parking
+        ? await api.updateParking(parking.id, payload, token)
+        : await api.createParking(payload, token);
+      const { parking: p } = response;
+      const mapped = mapParking(p);
+      setParking(mapped);
+      const updatedUser = {
+        ...user,
+        name: mapped.ownerName || user.name,
+        parkingId: mapped.id,
+      };
+      setUser(updatedUser);
+      await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+      showToast("Parking profile saved", "success");
+    } catch (e: any) {
+      showToast(e.message || "Failed to save parking", "error");
+      throw e;
+    }
+  }, [token, user, parking, showToast]);
 
   const addEntry = useCallback(async (data: any): Promise<VehicleEntry> => {
     if (!token || !parking) throw new Error("Not authenticated");
-    const { entry } = await api.addEntry({ ...data, parkingId: parking.id }, token);
-    const mapped = mapEntry(entry);
-    setEntries(prev => [mapped, ...prev]);
-    return mapped;
-  }, [token, parking]);
+    try {
+      const { entry } = await api.addEntry({ ...data, parkingId: parking.id }, token);
+      const mapped = mapEntry(entry);
+      setEntries(prev => [mapped, ...prev]);
+      showToast("Entry saved and ticket generated", "success");
+      return mapped;
+    } catch (e: any) {
+      showToast(e.message || "Failed to save entry", "error");
+      throw e;
+    }
+  }, [token, parking, showToast]);
 
   const exitVehicle = useCallback(async (entryId: string, _exitTime?: string, extraPaymentType?: PaymentType) => {
     if (!token) throw new Error("Not authenticated");
-    const { entry } = await api.exitVehicle(entryId, token, extraPaymentType);
-    const mapped = mapEntry(entry);
-    setEntries(prev => prev.map(e => e.id === entryId ? mapped : e));
-  }, [token]);
+    try {
+      const { entry } = await api.exitVehicle(entryId, token, extraPaymentType);
+      const mapped = mapEntry(entry);
+      setEntries(prev => prev.map(e => e.id === entryId ? mapped : e));
+      showToast("Vehicle exit completed", "success");
+    } catch (e: any) {
+      showToast(e.message || "Failed to process exit", "error");
+      throw e;
+    }
+  }, [token, showToast]);
 
   const updatePaymentStatus = useCallback(async (entryId: string, status: PaymentStatus, paymentType?: PaymentType) => {
     if (!token) throw new Error("Not authenticated");
-    const { entry } = await api.updatePayment(entryId, status, token, paymentType);
-    const mapped = mapEntry(entry);
-    setEntries(prev => prev.map(e => e.id === entryId ? mapped : e));
-  }, [token]);
+    try {
+      const { entry } = await api.updatePayment(entryId, status, token, paymentType);
+      const mapped = mapEntry(entry);
+      setEntries(prev => prev.map(e => e.id === entryId ? mapped : e));
+      showToast("Payment updated", "success");
+    } catch (e: any) {
+      showToast(e.message || "Failed to update payment", "error");
+      throw e;
+    }
+  }, [token, showToast]);
 
   const addStaff = useCallback(async (data: Omit<Staff, "id" | "parkingId" | "createdAt">) => {
     if (!token || !parking) throw new Error("Not authenticated");
-    const { staff: s } = await api.addStaff({ ...data, parkingId: parking.id }, token);
-    setStaff(prev => [...prev, { id: s._id || s.id, name: s.name, mobile: s.mobile, role: s.role, parkingId: s.parkingId, isActive: s.isActive, createdAt: s.createdAt }]);
-  }, [token, parking]);
+    try {
+      const { staff: s } = await api.addStaff({ ...data, parkingId: parking.id }, token);
+      setStaff(prev => [...prev, { id: s._id || s.id, name: s.name, mobile: s.mobile, role: s.role, parkingId: s.parkingId, isActive: s.isActive, createdAt: s.createdAt }]);
+      showToast("Attendant added", "success");
+    } catch (e: any) {
+      showToast(e.message || "Failed to add attendant", "error");
+      throw e;
+    }
+  }, [token, parking, showToast]);
 
   const updateStaff = useCallback(async (id: string, updates: Partial<Staff>) => {
     if (!token) throw new Error("Not authenticated");
-    const { staff: s } = await api.updateStaff(id, updates, token);
-    setStaff(prev => prev.map(m => m.id === id ? { ...m, name: s.name, role: s.role, isActive: s.isActive } : m));
-  }, [token]);
+    try {
+      const { staff: s } = await api.updateStaff(id, updates, token);
+      setStaff(prev => prev.map(m => m.id === id ? { ...m, name: s.name, role: s.role, isActive: s.isActive } : m));
+      showToast("Attendant updated", "success");
+    } catch (e: any) {
+      showToast(e.message || "Failed to update attendant", "error");
+      throw e;
+    }
+  }, [token, showToast]);
 
   const deleteStaff = useCallback(async (id: string) => {
     if (!token) throw new Error("Not authenticated");
-    await api.deleteStaff(id, token);
-    setStaff(prev => prev.filter(s => s.id !== id));
-  }, [token]);
+    try {
+      await api.deleteStaff(id, token);
+      setStaff(prev => prev.filter(s => s.id !== id));
+      showToast("Attendant removed", "success");
+    } catch (e: any) {
+      showToast(e.message || "Failed to remove attendant", "error");
+      throw e;
+    }
+  }, [token, showToast]);
 
   const refreshData = useCallback(async () => {
     if (!token || !parking) return;
-    await Promise.all([loadEntries(parking.id, token), loadStaff(parking.id, token), loadLogs(parking.id, token)]);
-  }, [token, parking]);
+    setIsDataLoading(true);
+    try {
+      if (canLoadOwnerData(user?.role)) {
+        await Promise.all([loadEntries(parking.id, token), loadStaff(parking.id, token), loadLogs(parking.id, token)]);
+      } else {
+        await loadEntries(parking.id, token);
+        setStaff([]);
+        setActivityLogs([]);
+      }
+    } catch (e: any) {
+      await logAndLogoutForError("session.refreshData", e);
+    } finally {
+      setIsDataLoading(false);
+    }
+  }, [logAndLogoutForError, token, parking, user?.role]);
 
   const refreshEntries = useCallback(async () => {
     if (!token || !parking) return;
-    await loadEntries(parking.id, token);
-  }, [token, parking]);
+    setIsDataLoading(true);
+    try {
+      await loadEntries(parking.id, token);
+    } catch (e) {
+      await logAndLogoutForError("session.refreshEntries", e);
+    } finally {
+      setIsDataLoading(false);
+    }
+  }, [logAndLogoutForError, token, parking]);
 
   const refreshSession = useCallback(async () => {
     if (!token) return;
     if (refreshSessionRef.current) {
-      await refreshSessionRef.current;
+      try {
+        await refreshSessionRef.current;
+      } catch (e) {
+        await logAndLogoutForError("session.refreshSession.shared", e);
+      }
       return;
     }
 
+    setIsDataLoading(true);
     const pendingRefresh = (async () => {
       const { user: freshUser, parking: freshParking } = await api.getMe(token);
       const mappedUser: User = {
@@ -418,32 +565,63 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
       const mappedParking = mapParking(freshParking);
       setParking(mappedParking);
-      await Promise.all([
-        loadEntries(mappedParking.id, token),
-        loadStaff(mappedParking.id, token),
-        loadLogs(mappedParking.id, token),
-      ]);
+      if (canLoadOwnerData(mappedUser.role)) {
+        await Promise.all([
+          loadEntries(mappedParking.id, token),
+          loadStaff(mappedParking.id, token),
+          loadLogs(mappedParking.id, token),
+        ]);
+      } else {
+        await loadEntries(mappedParking.id, token);
+        setStaff([]);
+        setActivityLogs([]);
+      }
     })();
 
     refreshSessionRef.current = pendingRefresh;
 
     try {
       await pendingRefresh;
+    } catch (e: any) {
+      await logAndLogoutForError("session.refreshSession", e);
     } finally {
       refreshSessionRef.current = null;
+      setIsDataLoading(false);
     }
-  }, [token]);
+  }, [logAndLogoutForError, token]);
+
+  const toastColors = colorTokens[resolvedTheme];
+  const toastBg = toast?.type === "error"
+    ? toastColors.destructive
+    : toast?.type === "success"
+      ? toastColors.success
+      : toastColors.primary;
 
   return (
     <AppContext.Provider value={{
-      user, token, parking, entries, staff, activityLogs, isLoading,
-      themeMode, resolvedTheme,
+      user, token, parking, entries, staff, activityLogs, isLoading, isDataLoading,
+      themeMode, resolvedTheme, showToast,
       loginWithToken, logout, setupParking, addEntry, exitVehicle,
       updatePaymentStatus, addStaff, updateStaff, deleteStaff,
       refreshData, refreshEntries, refreshSession,
       setThemeMode, toggleTheme,
     }}>
       {children}
+      {isDataLoading && !isLoading ? (
+        <View pointerEvents="none" style={styles.dataOverlay}>
+          <View style={[styles.dataLoader, { backgroundColor: toastColors.card, borderColor: toastColors.border }]}>
+            <ActivityIndicator size="small" color={toastColors.primary} />
+            <Text style={[styles.dataLoaderText, { color: toastColors.foreground }]}>Loading data...</Text>
+          </View>
+        </View>
+      ) : null}
+      {toast ? (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <View style={[styles.toast, { backgroundColor: toastBg }]}>
+            <Text style={styles.toastText}>{toast.message}</Text>
+          </View>
+        </View>
+      ) : null}
     </AppContext.Provider>
   );
 }
@@ -453,3 +631,46 @@ export function useApp() {
   if (!ctx) throw new Error("useApp must be used within AppProvider");
   return ctx;
 }
+
+const styles = StyleSheet.create({
+  dataOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(15, 23, 42, 0.18)",
+    zIndex: 20,
+  },
+  dataLoader: {
+    minWidth: 150,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    alignItems: "center",
+    gap: 8,
+  },
+  dataLoaderText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  toastWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 28,
+    alignItems: "center",
+    zIndex: 30,
+  },
+  toast: {
+    maxWidth: 520,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  toastText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    textAlign: "center",
+  },
+});

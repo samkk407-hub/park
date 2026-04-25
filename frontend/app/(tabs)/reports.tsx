@@ -1,30 +1,40 @@
 import { Feather } from "@expo/vector-icons";
+import * as FileSystem from "expo-file-system";
 import { useFocusEffect } from "@react-navigation/native";
-import React, { useMemo, useState } from "react";
+import { useRouter } from "expo-router";
+import * as Sharing from "expo-sharing";
+import React, { useCallback, useMemo, useState } from "react";
 import {
-  Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert
+  ActivityIndicator, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, Alert
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useApp } from "@/context/AppContext";
+import { useApp, type VehicleEntry } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { api } from "@/lib/api";
 import { getEntryAmountForPaymentType } from "@/lib/entryMoney";
 
 type DateRange = "today" | "week" | "month" | "all";
 
 export default function ReportsScreen() {
-  const { entries, parking, refreshSession } = useApp();
+  const { parking, token, user, showToast } = useApp();
   const colors = useColors();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
-  const [range, setRange] = useState<DateRange>("today");
+  const [range, setRange] = useState<DateRange>("all");
+  const [reportEntries, setReportEntries] = useState<VehicleEntry[]>([]);
+  const [isReportLoading, setIsReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const canManageStaff = user?.role === "owner" || user?.role === "superadmin";
 
   const topPad = isWeb ? 67 : insets.top + 16;
   const botPad = isWeb ? 34 : insets.bottom + 90;
 
   const filtered = useMemo(() => {
     const now = new Date();
-    return entries.filter(e => {
+    return reportEntries.filter(e => {
       const d = new Date(e.entryTime);
+      if (Number.isNaN(d.getTime())) return false;
       if (range === "today") return d.toDateString() === now.toDateString();
       if (range === "week") {
         const week = new Date(now);
@@ -38,7 +48,7 @@ export default function ReportsScreen() {
       }
       return true;
     });
-  }, [entries, range]);
+  }, [reportEntries, range]);
 
   const stats = useMemo(() => {
     const totalIncome = filtered.filter(e => e.paymentStatus === "paid").reduce((s, e) => s + e.amount, 0);
@@ -59,14 +69,74 @@ export default function ReportsScreen() {
     { key: "all", label: "All Time" },
   ];
 
-  const handleExport = () => {
-    Alert.alert("Export", "CSV export would be implemented with a file system integration.\n\nIn production, this generates a CSV file with all entries.");
+  const fetchReportEntries = useCallback(async () => {
+    if (!token || !parking?.id) return;
+    setIsReportLoading(true);
+    setReportError(null);
+    try {
+      const { entries: data } = await api.getEntries(parking.id, token, { limit: "1000" });
+      setReportEntries(data.map(mapReportEntry));
+    } catch (e: any) {
+      const message = e.message || "Report data load nahi hua";
+      setReportError(message);
+      showToast(message, "error");
+      await api.logFrontendError({
+        area: "reports.load",
+        message,
+        stack: e.stack,
+        metadata: { parkingId: parking.id, range },
+      });
+    } finally {
+      setIsReportLoading(false);
+    }
+  }, [parking?.id, range, showToast, token]);
+
+  const handleExport = async () => {
+    if (filtered.length === 0) {
+      showToast("No entries to export", "info");
+      return;
+    }
+
+    const csv = buildReportCsv(filtered);
+    const fileName = `parking-report-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
+
+    try {
+      if (Platform.OS === "web") {
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } else {
+        const file = new FileSystem.File(FileSystem.Paths.cache, fileName);
+        file.create({ overwrite: true });
+        file.write(csv);
+        const uri = file.uri;
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(uri, {
+            mimeType: "text/csv",
+            dialogTitle: "Export parking report",
+            UTI: "public.comma-separated-values-text",
+          });
+        } else {
+          Alert.alert("Report Saved", uri);
+        }
+      }
+      showToast("Report exported", "success");
+    } catch (e: any) {
+      showToast(e.message || "Failed to export report", "error");
+      Alert.alert("Export Failed", e.message || "Failed to export report");
+    }
   };
 
   useFocusEffect(
     React.useCallback(() => {
-      void refreshSession();
-    }, [refreshSession])
+      void fetchReportEntries();
+    }, [fetchReportEntries])
   );
 
   return (
@@ -101,6 +171,13 @@ export default function ReportsScreen() {
         ))}
       </View>
 
+      {isReportLoading && (
+        <View style={[styles.loadingCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <ActivityIndicator color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>Report data load ho raha hai...</Text>
+        </View>
+      )}
+
       {/* Income Summary */}
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
         <Text style={[styles.cardTitle, { color: colors.foreground }]}>Income Summary</Text>
@@ -114,11 +191,16 @@ export default function ReportsScreen() {
             <Text style={[styles.halfLabel, { color: colors.mutedForeground }]}>Owner UPI</Text>
             <Text style={[styles.halfAmount, { color: colors.primary }]}>₹{stats.onlineIncome}</Text>
           </View>
-          <View style={[styles.halfCard, { backgroundColor: colors.successLight }]}>
+          <TouchableOpacity
+            style={[styles.halfCard, { backgroundColor: colors.successLight }]}
+            onPress={() => canManageStaff && router.push("/staff")}
+            activeOpacity={canManageStaff ? 0.75 : 1}
+            disabled={!canManageStaff}
+          >
             <Feather name="dollar-sign" size={16} color={colors.success} />
             <Text style={[styles.halfLabel, { color: colors.mutedForeground }]}>Cash</Text>
             <Text style={[styles.halfAmount, { color: colors.success }]}>₹{stats.offlineIncome}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
         {stats.pending > 0 && (
           <View style={[styles.pendingRow, { backgroundColor: colors.warningLight }]}>
@@ -164,8 +246,130 @@ export default function ReportsScreen() {
 
       {/* Attendant Breakdown */}
       <AttendantBreakdown entries={filtered} colors={colors} />
+
+      {!isReportLoading && filtered.length === 0 && (
+        <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Feather name="bar-chart-2" size={22} color={colors.mutedForeground} />
+          <Text style={[styles.emptyTitle, { color: colors.foreground }]}>
+            {reportError ? "Report load failed" : "No report data"}
+          </Text>
+          <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
+            {reportError
+              ? reportError
+              : reportEntries.length === 0
+              ? "API se abhi report entries nahi mili. Thoda wait karke tab dobara open karo."
+              : "Is date range me entry nahi hai. 7 Days, 30 Days ya All Time select karo."}
+          </Text>
+        </View>
+      )}
     </ScrollView>
   );
+}
+
+function mapReportEntry(e: any): VehicleEntry {
+  return {
+    id: e._id || e.id,
+    ticketId: e.ticketId,
+    publicToken: e.publicToken,
+    ticketUrl: e.ticketUrl,
+    parkingId: e.parkingId,
+    vehicleType: e.vehicleType,
+    numberPlate: e.numberPlate,
+    customerMobile: e.customerMobile || "",
+    entryTime: e.entryTime,
+    exitTime: e.exitTime,
+    plannedDurationDays: e.plannedDurationDays,
+    validUntil: e.validUntil,
+    paymentType: e.paymentType,
+    paymentStatus: e.paymentStatus,
+    paymentCollectedByUserId: e.paymentCollectedByUserId,
+    paymentCollectedByName: e.paymentCollectedByName,
+    paymentCollectedByRole: e.paymentCollectedByRole,
+    paymentCollectedAt: e.paymentCollectedAt,
+    settlementStatus: e.settlementStatus,
+    onlineSettlementStatus: e.onlineSettlementStatus,
+    onlineSettledAt: e.onlineSettledAt,
+    onlineSettlementId: e.onlineSettlementId,
+    settledAt: e.settledAt,
+    settledByUserId: e.settledByUserId,
+    settledByName: e.settledByName,
+    baseAmount: e.baseAmount,
+    overstayAmount: e.overstayAmount,
+    overstayPaymentType: e.overstayPaymentType,
+    overstayCollectedByUserId: e.overstayCollectedByUserId,
+    overstayCollectedByName: e.overstayCollectedByName,
+    overstayCollectedByRole: e.overstayCollectedByRole,
+    overstayCollectedAt: e.overstayCollectedAt,
+    overstayOnlineSettlementStatus: e.overstayOnlineSettlementStatus,
+    overstayOnlineSettledAt: e.overstayOnlineSettledAt,
+    overstayOnlineSettlementId: e.overstayOnlineSettlementId,
+    overstaySettlementStatus: e.overstaySettlementStatus,
+    overstaySettledAt: e.overstaySettledAt,
+    overstaySettledByUserId: e.overstaySettledByUserId,
+    overstaySettledByName: e.overstaySettledByName,
+    amount: e.amount || 0,
+    status: e.status,
+    attendantId: e.attendantId || "unknown",
+    attendantName: e.attendantName || "Unknown",
+    duration: e.duration,
+  };
+}
+
+function csvCell(value: unknown): string {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function reportDate(iso?: string): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
+function buildReportCsv(entries: any[]): string {
+  const headers = [
+    "Ticket ID",
+    "Vehicle Number",
+    "Vehicle Type",
+    "Customer Mobile",
+    "Entry Time",
+    "Valid Till",
+    "Exit Time",
+    "Status",
+    "Paid Days",
+    "Payment Status",
+    "Payment Method",
+    "Total Amount",
+    "Owner UPI Amount",
+    "Cash Amount",
+    "Attendant",
+  ];
+
+  const rows = entries.map((entry) => [
+    entry.ticketId,
+    entry.numberPlate,
+    entry.vehicleType,
+    entry.customerMobile ? `+91 ${entry.customerMobile}` : "",
+    reportDate(entry.entryTime),
+    reportDate(entry.validUntil),
+    reportDate(entry.exitTime),
+    entry.status,
+    entry.plannedDurationDays || 1,
+    entry.paymentStatus,
+    entry.paymentType === "online" ? "Owner QR / UPI" : "Cash",
+    entry.amount,
+    getEntryAmountForPaymentType(entry, "online"),
+    getEntryAmountForPaymentType(entry, "offline"),
+    entry.attendantName,
+  ]);
+
+  return [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\n");
 }
 
 function StatRow({ label, value, icon, colors }: { label: string; value: string; icon: any; colors: any }) {
@@ -368,5 +572,35 @@ const styles = StyleSheet.create({
   attendantIncome: {
     fontSize: 15,
     fontFamily: "Inter_700Bold",
+  },
+  loadingCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  emptyCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 18,
+    alignItems: "center",
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 15,
+    fontFamily: "Inter_600SemiBold",
+  },
+  emptyText: {
+    textAlign: "center",
+    fontSize: 13,
+    lineHeight: 18,
+    fontFamily: "Inter_400Regular",
   },
 });

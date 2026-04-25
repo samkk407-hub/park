@@ -19,7 +19,7 @@ import { useColors } from "@/hooks/useColors";
 import { api, getApiDomain } from "@/lib/api";
 
 export default function PlansScreen() {
-  const { token, parking, user } = useApp();
+  const { token, parking, user, showToast } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
@@ -42,11 +42,12 @@ export default function PlansScreen() {
       setPurchases(response.purchases || []);
       if (!selectedPlanId && response.plans?.[0]?._id) setSelectedPlanId(response.plans[0]._id);
     } catch (e: any) {
+      showToast(e.message || "Failed to load plans", "error");
       Alert.alert("Error", e.message || "Failed to load plans");
     } finally {
       setLoading(false);
     }
-  }, [isOwner, parking, selectedPlanId, token]);
+  }, [isOwner, parking, selectedPlanId, token, showToast]);
 
   useFocusEffect(
     useCallback(() => {
@@ -67,13 +68,18 @@ export default function PlansScreen() {
         token
       );
       await WebBrowser.openBrowserAsync(`${getApiDomain()}${response.checkoutUrl}`);
+      showToast("Payment checkout opened", "success");
       Alert.alert(
         "Payment Started",
         `${selectedPlan?.name || "Plan"} Razorpay checkout has opened. Entries will be added automatically after successful payment.`
       );
       await loadData();
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to start payment");
+      const message = e.message?.toLowerCase().includes("gateway")
+        ? "Payment gateway abhi configured nahi hai. Admin se contact karo, server band nahi hoga."
+        : e.message || "Failed to start payment";
+      showToast(message, "error");
+      Alert.alert("Payment Not Available", message);
     } finally {
       setRequesting(false);
     }
@@ -112,7 +118,7 @@ export default function PlansScreen() {
             <View style={[styles.progressFill, { width: `${percent}%`, backgroundColor: remaining <= 100 ? colors.destructive : colors.primary }]} />
           </View>
           <Text style={[styles.helper, { color: colors.mutedForeground }]}>
-            First {summary?.freeEntryLimit || 1000} entries are free. After the limit is reached, buy a plan with Razorpay and entries will be added automatically after successful payment.
+            First {summary?.freeEntryLimit || 1000} entries are free. After the limit is reached, buy a plan. Payment gateway is currently admin-configured.
           </Text>
         </View>
 
@@ -142,7 +148,7 @@ export default function PlansScreen() {
               <Text style={[styles.price, { color: colors.primary }]}>Rs {plan.price}</Text>
             </TouchableOpacity>
           ))}
-          <PrimaryButton label="Pay with Razorpay" onPress={buyPlan} loading={requesting || loading} />
+          <PrimaryButton label="Buy Entry Plan" onPress={buyPlan} loading={requesting || loading} />
         </View>
 
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>

@@ -2,14 +2,15 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  Alert, KeyboardAvoidingView, Platform,
-  ScrollView, StyleSheet, Text, View
+  ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+  ScrollView, StyleSheet, Text, TouchableOpacity, View
 } from "react-native";
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { FormInput } from "@/components/FormInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { api, type LocationSuggestion } from "@/lib/api";
 
 interface Errors {
   name?: string;
@@ -25,8 +26,11 @@ interface Errors {
 export default function SetupScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { parking, setupParking } = useApp();
+  const { parking, setupParking, token } = useApp();
   const [loading, setLoading] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<LocationSuggestion[]>([]);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [selectedLocationText, setSelectedLocationText] = useState("");
 
   const [form, setForm] = useState({
     name: "",
@@ -42,6 +46,8 @@ export default function SetupScreen() {
     bikeCapacity: "",
     carCapacity: "",
     notes: "",
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
   });
   const [errors, setErrors] = useState<Errors>({});
 
@@ -62,12 +68,64 @@ export default function SetupScreen() {
       bikeCapacity: parking.bikeCapacity ? String(parking.bikeCapacity) : "",
       carCapacity: parking.carCapacity ? String(parking.carCapacity) : "",
       notes: parking.notes || "",
+      latitude: parking.latitude,
+      longitude: parking.longitude,
     });
+    setSelectedLocationText(parking.location || "");
   }, [parking]);
 
+  useEffect(() => {
+    const input = form.location.trim();
+    if (!token || input.length < 2 || input === selectedLocationText) {
+      setLocationSuggestions([]);
+      setLocationLoading(false);
+      return;
+    }
+
+    setLocationLoading(true);
+    const timer = setTimeout(() => {
+      api.autocompleteLocations(input, token)
+        .then(res => setLocationSuggestions(res.suggestions))
+        .catch(() => setLocationSuggestions([]))
+        .finally(() => setLocationLoading(false));
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [form.location, selectedLocationText, token]);
+
   const set = (key: string, val: string) => {
-    setForm(prev => ({ ...prev, [key]: val }));
+    setForm(prev => ({
+      ...prev,
+      [key]: val,
+      ...(key === "location" ? { latitude: undefined, longitude: undefined } : {}),
+    }));
+    if (key === "location") setSelectedLocationText("");
     setErrors(prev => ({ ...prev, [key]: undefined }));
+  };
+
+  const selectLocation = async (suggestion: LocationSuggestion) => {
+    if (!token) return;
+    setLocationLoading(true);
+    setLocationSuggestions([]);
+    try {
+      const res = await api.getLocationDetails(suggestion.placeId, token);
+      const location = res.location;
+      const nextAddress = location.address || suggestion.description;
+      setForm(prev => ({
+        ...prev,
+        location: nextAddress,
+        city: location.city || prev.city,
+        state: location.state || prev.state,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      }));
+      setSelectedLocationText(nextAddress);
+      setErrors(prev => ({ ...prev, location: undefined, city: undefined, state: undefined }));
+    } catch {
+      Alert.alert("Location Error", "Location details load nahi ho payi. Please manually fill kar dein.");
+    } finally {
+      setLocationLoading(false);
+    }
   };
 
   const validate = () => {
@@ -102,6 +160,8 @@ export default function SetupScreen() {
         bikeCapacity: Number(form.bikeCapacity) || 0,
         carCapacity: Number(form.carCapacity) || 0,
         notes: form.notes,
+        latitude: form.latitude,
+        longitude: form.longitude,
       });
       router.replace("/");
     } catch {
@@ -155,6 +215,35 @@ export default function SetupScreen() {
               required
               multiline
             />
+            {(locationLoading || locationSuggestions.length > 0) && (
+              <View style={[styles.suggestionBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                {locationLoading ? (
+                  <View style={styles.suggestionLoading}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={[styles.suggestionSub, { color: colors.mutedForeground }]}>Searching locations...</Text>
+                  </View>
+                ) : (
+                  locationSuggestions.map(suggestion => (
+                    <TouchableOpacity
+                      key={suggestion.placeId}
+                      style={[styles.suggestionItem, { borderBottomColor: colors.border }]}
+                      onPress={() => void selectLocation(suggestion)}
+                      activeOpacity={0.75}
+                    >
+                      <Feather name="map-pin" size={16} color={colors.primary} />
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.suggestionTitle, { color: colors.foreground }]} numberOfLines={1}>
+                          {suggestion.mainText}
+                        </Text>
+                        <Text style={[styles.suggestionSub, { color: colors.mutedForeground }]} numberOfLines={2}>
+                          {suggestion.secondaryText || suggestion.description}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
+            )}
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
                 <FormInput
@@ -316,5 +405,36 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     gap: 12,
+  },
+  suggestionBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: "hidden",
+    marginTop: -6,
+  },
+  suggestionLoading: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+  },
+  suggestionItem: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+  },
+  suggestionTitle: {
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+  },
+  suggestionSub: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 1,
   },
 });

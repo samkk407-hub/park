@@ -97,7 +97,6 @@ export default function DashboardScreen() {
 
   const topPad = isWeb ? 67 : insets.top + 16;
   const botPad = isWeb ? 34 : insets.bottom + 90;
-  const canViewIncome = user?.role === "owner" || user?.role === "superadmin";
 
   return (
     <ScrollView
@@ -122,25 +121,26 @@ export default function DashboardScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Quick Actions */}
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.success }]}
-          onPress={() => router.push("/entry")}
-          activeOpacity={0.85}
-        >
-          <Feather name="plus-circle" size={18} color="#fff" />
-          <Text style={styles.actionBtnText}>New Entry</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.destructive }]}
-          onPress={() => router.push("/exit")}
-          activeOpacity={0.85}
-        >
-          <Feather name="log-out" size={18} color="#fff" />
-          <Text style={styles.actionBtnText}>Exit</Text>
-        </TouchableOpacity>
-      </View>
+      {user?.role === "attendant" && (
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: colors.success }]}
+            onPress={() => router.push("/entry")}
+            activeOpacity={0.85}
+          >
+            <Feather name="plus-circle" size={18} color="#fff" />
+            <Text style={styles.actionBtnText}>New Entry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: colors.destructive }]}
+            onPress={() => router.push("/exit")}
+            activeOpacity={0.85}
+          >
+            <Feather name="log-out" size={18} color="#fff" />
+            <Text style={styles.actionBtnText}>Exit</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* Occupancy */}
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -208,28 +208,48 @@ export default function DashboardScreen() {
             />
           </View>
           */}
-          <View style={styles.ownerToolsRow}>
-            <TouchableOpacity
-              style={[styles.ownerToolBtn, { backgroundColor: colors.primary }]}
-              onPress={() => router.push({ pathname: "/staff", params: { add: "1" } })}
-              activeOpacity={0.85}
-            >
-              <Feather name="user-plus" size={16} color="#fff" />
-              <Text style={styles.actionBtnText}>Add Attendant</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.ownerToolBtn, { backgroundColor: colors.warning }]}
-              onPress={() => router.push("/plans" as any)}
-              activeOpacity={0.85}
-            >
-              <Feather name="package" size={16} color="#fff" />
-              <Text style={styles.actionBtnText}>Entry Plans</Text>
-            </TouchableOpacity>
+          <View style={styles.ownerToolsStack}>
+            <View style={styles.ownerToolsRow}>
+              <TouchableOpacity
+                style={[styles.ownerToolBtn, styles.primaryOwnerToolBtn, { backgroundColor: colors.warning }]}
+                onPress={() => router.push("/plans" as any)}
+                activeOpacity={0.85}
+              >
+                <Feather name="package" size={18} color="#fff" />
+                <Text style={styles.actionBtnText}>Entry Plans</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ownerToolBtn, styles.primaryOwnerToolBtn, { backgroundColor: colors.primary }]}
+                onPress={() => router.push({ pathname: "/staff", params: { add: "1" } })}
+                activeOpacity={0.85}
+              >
+                <Feather name="user-plus" size={18} color="#fff" />
+                <Text style={styles.actionBtnText}>Add Attendant</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.ownerToolsRow}>
+              <TouchableOpacity
+                style={[styles.ownerToolBtn, styles.primaryOwnerToolBtn, { backgroundColor: colors.success }]}
+                onPress={() => router.push("/entry")}
+                activeOpacity={0.85}
+              >
+                <Feather name="plus-circle" size={18} color="#fff" />
+                <Text style={styles.actionBtnText}>New Entry</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.ownerToolBtn, styles.primaryOwnerToolBtn, { backgroundColor: colors.destructive }]}
+                onPress={() => router.push("/exit")}
+                activeOpacity={0.85}
+              >
+                <Feather name="log-out" size={18} color="#fff" />
+                <Text style={styles.actionBtnText}>Exit</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       )}
 
-      {canViewIncome && (
+      {/*
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.cardTitle, { color: colors.foreground }]}>{"Today's Income"}</Text>
           <View style={styles.incomeRow}>
@@ -250,7 +270,7 @@ export default function DashboardScreen() {
             </View>
           </View>
         </View>
-      )}
+      */}
 
       {/* Recent Inside */}
       {recentEntries.length > 0 && (
@@ -355,6 +375,9 @@ const styles = StyleSheet.create({
   ownerPanel: {
     gap: 8,
   },
+  ownerToolsStack: {
+    gap: 8,
+  },
   ownerToolsRow: {
     flexDirection: "row",
     gap: 8,
@@ -368,6 +391,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 12,
     gap: 6,
+  },
+  primaryOwnerToolBtn: {
+    paddingVertical: 15,
+    borderRadius: 14,
   },
   sectionRow: {
     flexDirection: "row",

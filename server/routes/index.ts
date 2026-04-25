@@ -8,6 +8,8 @@ import reportsRouter from "./reports";
 import adminRouter from "./admin";
 import bankingRouter from "./banking";
 import subscriptionsRouter from "./subscriptions";
+import errorsRouter from "./errors";
+import locationsRouter from "./locations";
 
 const router: IRouter = Router();
 
@@ -19,6 +21,8 @@ router.use("/staff", staffRouter);
 router.use("/reports", reportsRouter);
 router.use("/banking", bankingRouter);
 router.use("/subscriptions", subscriptionsRouter);
+router.use("/locations", locationsRouter);
+router.use(errorsRouter);
 router.use("/admin", adminRouter);
 
 

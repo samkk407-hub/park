@@ -19,7 +19,6 @@ export default function MoreScreen() {
   const topPad = isWeb ? 67 : insets.top + 16;
   const botPad = isWeb ? 34 : insets.bottom + 90;
 
-  const isAdmin = user?.role === "admin";
   const isOwner = user?.role === "owner" || user?.role === "admin" || user?.role === "superadmin";
   const displayName =
     user?.name && user.name !== "New User"

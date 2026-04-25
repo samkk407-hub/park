@@ -18,7 +18,7 @@ export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { loginWithToken } = useApp();
+  const { loginWithToken, showToast } = useApp();
   const isWeb = Platform.OS === "web";
 
   const [step, setStep] = useState<Step>("role");
@@ -47,12 +47,14 @@ export default function LoginScreen() {
       const res = await api.sendOtp(mobile);
       if (res.devOtp) setDevOtp(res.devOtp);
       setStep("otp");
+      showToast(`OTP sent to +91 ${mobile}`, "success");
       if (res.devOtp) {
         Alert.alert("OTP Sent (Dev Mode)", `Your OTP is: ${res.devOtp}`);
       } else {
         Alert.alert("OTP Sent", `OTP sent to +91 ${mobile}`);
       }
     } catch (e: any) {
+      showToast(e.message || "Failed to send OTP", "error");
       Alert.alert("Error", e.message || "Failed to send OTP");
     } finally {
       setLoading(false);
@@ -79,6 +81,7 @@ export default function LoginScreen() {
       await loginWithToken(res.token, user, res.parking);
       router.replace("/");
     } catch (e: any) {
+      showToast(e.message || "OTP verification failed", "error");
       Alert.alert("Login Failed", e.message || "OTP verification failed");
     } finally {
       setLoading(false);

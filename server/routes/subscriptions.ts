@@ -10,6 +10,7 @@ import {
 import { SubscriptionPlan } from "../models/SubscriptionPlan";
 import { PlanPurchase } from "../models/PlanPurchase";
 import { ParkingSubscription } from "../models/ParkingSubscription";
+import { logError } from "../lib/errorLog";
 
 const router = Router();
 
@@ -65,7 +66,9 @@ async function createRazorpayOrder(amount: number, receipt: string) {
   const keyId = process.env["RAZORPAY_KEY_ID"];
   const keySecret = process.env["RAZORPAY_KEY_SECRET"];
   if (!keyId || !keySecret) {
-    throw new Error("RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET are required");
+    const error = new Error("Payment gateway is not configured yet. Please contact admin before buying an entry plan.");
+    (error as any).statusCode = 503;
+    throw error;
   }
 
   const response = await fetch("https://api.razorpay.com/v1/orders", {
@@ -89,50 +92,74 @@ async function createRazorpayOrder(amount: number, receipt: string) {
 }
 
 router.post("/purchase", authMiddleware, async (req: Request, res: Response) => {
-  const { userId } = getAuth(req);
-  if (!userId) return res.status(401).json({ error: "Unauthorized" });
-  const { parkingId, planId } = req.body as any;
+  try {
+    const { userId } = getAuth(req);
+    if (!userId) return res.status(401).json({ error: "Unauthorized" });
+    const { parkingId, planId } = req.body as any;
 
-  const parking = await requireParkingAccess(req, res, parkingId);
-  if (!parking) return;
-  await ensureDefaultPlans();
+    const parking = await requireParkingAccess(req, res, parkingId);
+    if (!parking) return;
+    await ensureDefaultPlans();
 
-  const plan = await SubscriptionPlan.findOne({ _id: planId, isActive: true }).lean();
-  if (!plan) return res.status(404).json({ error: "Plan not found" });
+    const plan = await SubscriptionPlan.findOne({ _id: planId, isActive: true }).lean();
+    if (!plan) return res.status(404).json({ error: "Plan not found" });
 
-  const receipt = `plan_${parkingId}_${Date.now()}`;
-  const order = await createRazorpayOrder(plan.price, receipt);
+    const receipt = `plan_${parkingId}_${Date.now()}`;
+    const order = await createRazorpayOrder(plan.price, receipt);
 
-  const purchase = await PlanPurchase.create({
-    parkingId,
-    ownerId: parking.ownerId,
-    planId: plan._id.toString(),
-    planName: plan.name,
-    price: plan.price,
-    entryLimit: plan.entryLimit,
-    paymentMode: "upi",
-    paymentReference: order.id,
-    razorpayOrderId: order.id,
-    note: "",
-    status: "created",
-  });
+    const purchase = await PlanPurchase.create({
+      parkingId,
+      ownerId: parking.ownerId,
+      planId: plan._id.toString(),
+      planName: plan.name,
+      price: plan.price,
+      entryLimit: plan.entryLimit,
+      paymentMode: "upi",
+      paymentReference: order.id,
+      razorpayOrderId: order.id,
+      note: "",
+      status: "created",
+    });
 
-  return res.status(201).json({
-    purchase,
-    order,
-    keyId: process.env["RAZORPAY_KEY_ID"],
-    checkoutUrl: `/api/subscriptions/checkout/${purchase._id.toString()}`,
-  });
+    return res.status(201).json({
+      purchase,
+      order,
+      keyId: process.env["RAZORPAY_KEY_ID"],
+      checkoutUrl: `/api/subscriptions/checkout/${purchase._id.toString()}`,
+    });
+  } catch (error: any) {
+    await logError({
+      area: "subscriptions.purchase",
+      error,
+      req,
+      parkingId: (req.body as any)?.parkingId,
+      metadata: { planId: (req.body as any)?.planId },
+    });
+    return res.status(error.statusCode || 500).json({
+      error: error.message || "Failed to start plan payment. Please try again later.",
+      code: error.statusCode === 503 ? "PAYMENT_GATEWAY_NOT_CONFIGURED" : "PLAN_PURCHASE_FAILED",
+    });
+  }
 });
 
 router.get("/checkout/:purchaseId", async (req: Request, res: Response) => {
-  const purchase = await PlanPurchase.findById(req.params["purchaseId"]).lean();
-  if (!purchase) return res.status(404).send("Purchase not found");
-  if (purchase.status === "paid") return res.send("<h2>Payment already completed</h2>");
-  const keyId = process.env["RAZORPAY_KEY_ID"];
-  if (!keyId) return res.status(500).send("Razorpay key missing");
+  try {
+    const purchase = await PlanPurchase.findById(req.params["purchaseId"]).lean();
+    if (!purchase) return res.status(404).send("Purchase not found");
+    if (purchase.status === "paid") return res.send("<h2>Payment already completed</h2>");
+    const keyId = process.env["RAZORPAY_KEY_ID"];
+    if (!keyId) {
+      await logError({
+        area: "subscriptions.checkout",
+        error: new Error("Razorpay key missing"),
+        req,
+        parkingId: purchase.parkingId,
+        metadata: { purchaseId: purchase._id.toString() },
+      });
+      return res.status(503).send("Payment gateway is not configured yet. Please contact admin.");
+    }
 
-  res.type("html").send(`<!doctype html>
+    res.type("html").send(`<!doctype html>
 <html>
 <head>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -178,45 +205,73 @@ router.get("/checkout/:purchaseId", async (req: Request, res: Response) => {
   </script>
 </body>
 </html>`);
+  } catch (error: any) {
+    await logError({
+      area: "subscriptions.checkout",
+      error,
+      req,
+      metadata: { purchaseId: req.params["purchaseId"] },
+    });
+    return res.status(500).send(error.message || "Checkout failed");
+  }
 });
 
 router.post("/verify-payment", async (req: Request, res: Response) => {
-  const {
-    purchaseId,
-    razorpay_order_id,
-    razorpay_payment_id,
-    razorpay_signature,
-  } = req.body as any;
+  try {
+    const {
+      purchaseId,
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+    } = req.body as any;
 
-  const purchase = await PlanPurchase.findById(purchaseId);
-  if (!purchase) return res.status(404).json({ error: "Purchase not found" });
-  if (purchase.status === "paid") return res.json({ purchase });
+    const purchase = await PlanPurchase.findById(purchaseId);
+    if (!purchase) return res.status(404).json({ error: "Purchase not found" });
+    if (purchase.status === "paid") return res.json({ purchase });
 
-  const keySecret = process.env["RAZORPAY_KEY_SECRET"];
-  if (!keySecret) return res.status(500).json({ error: "Razorpay secret missing" });
-  if (purchase.razorpayOrderId !== razorpay_order_id) {
-    return res.status(400).json({ error: "Order mismatch" });
-  }
+    const keySecret = process.env["RAZORPAY_KEY_SECRET"];
+    if (!keySecret) {
+      await logError({
+        area: "subscriptions.verify-payment",
+        error: new Error("Razorpay secret missing"),
+        req,
+        parkingId: purchase.parkingId,
+        metadata: { purchaseId },
+      });
+      return res.status(503).json({ error: "Payment gateway is not configured yet." });
+    }
+    if (purchase.razorpayOrderId !== razorpay_order_id) {
+      return res.status(400).json({ error: "Order mismatch" });
+    }
 
-  const expected = crypto
-    .createHmac("sha256", keySecret)
-    .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-    .digest("hex");
-  if (expected !== razorpay_signature) {
-    purchase.status = "failed";
+    const expected = crypto
+      .createHmac("sha256", keySecret)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+    if (expected !== razorpay_signature) {
+      purchase.status = "failed";
+      await purchase.save();
+      return res.status(400).json({ error: "Invalid Razorpay signature" });
+    }
+
+    purchase.status = "paid";
+    purchase.razorpayPaymentId = razorpay_payment_id;
+    purchase.razorpaySignature = razorpay_signature;
+    purchase.paymentReference = razorpay_payment_id;
+    purchase.reviewedAt = new Date();
     await purchase.save();
-    return res.status(400).json({ error: "Invalid Razorpay signature" });
+    await addPurchasedEntries(purchase);
+
+    return res.json({ purchase });
+  } catch (error: any) {
+    await logError({
+      area: "subscriptions.verify-payment",
+      error,
+      req,
+      metadata: { purchaseId: (req.body as any)?.purchaseId },
+    });
+    return res.status(500).json({ error: error.message || "Payment verification failed" });
   }
-
-  purchase.status = "paid";
-  purchase.razorpayPaymentId = razorpay_payment_id;
-  purchase.razorpaySignature = razorpay_signature;
-  purchase.paymentReference = razorpay_payment_id;
-  purchase.reviewedAt = new Date();
-  await purchase.save();
-  await addPurchasedEntries(purchase);
-
-  return res.json({ purchase });
 });
 
 export default router;

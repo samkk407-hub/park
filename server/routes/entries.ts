@@ -187,7 +187,7 @@ router.post("/", authMiddleware, async (req: Request, res: Response) => {
   const summary = summarizeSubscription(subscription);
   if (summary.isLimitReached) {
     return res.status(402).json({
-      error: "Entry limit finished. Please buy a plan to add more entries.",
+      error: "Entry plan khatam ho gaya hai. Naya ticket katne ke liye Entry Plan purchase karo.",
       subscription: summary,
     });
   }

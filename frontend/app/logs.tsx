@@ -1,9 +1,8 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import { useRouter } from "expo-router";
 import React from "react";
 import {
-  FlatList, Platform, StyleSheet, Text, TouchableOpacity, View
+  FlatList, Platform, StyleSheet, Text, View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp, ActivityLog } from "@/context/AppContext";
@@ -23,7 +22,6 @@ export default function LogsScreen() {
   const { activityLogs, refreshSession } = useApp();
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const router = useRouter();
   const isWeb = Platform.OS === "web";
 
   useFocusEffect(

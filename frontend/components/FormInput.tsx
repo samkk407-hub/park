@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import React, { useState } from "react";
 import {
-  StyleSheet, Text, TextInput, TextInputProps, TouchableOpacity, View,
+  StyleSheet, Text, TextInput, TextInputProps, View,
 } from "react-native";
 import { useColors } from "@/hooks/useColors";
 

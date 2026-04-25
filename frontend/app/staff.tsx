@@ -28,7 +28,7 @@ interface AttendantCollection {
 }
 
 export default function StaffScreen() {
-  const { user, token, parking, staff, addStaff, updateStaff, deleteStaff, refreshSession } = useApp();
+  const { user, token, parking, staff, addStaff, updateStaff, deleteStaff, refreshSession, showToast } = useApp();
   const params = useLocalSearchParams<{ add?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -55,7 +55,7 @@ export default function StaffScreen() {
 
       const load = async () => {
         await refreshSession();
-        if (!token || !parking) return;
+        if (!token || !parking || !isOwner) return;
         const response = await api.getAttendantCollections(parking.id, token);
         if (!active) return;
 
@@ -71,7 +71,7 @@ export default function StaffScreen() {
       return () => {
         active = false;
       };
-    }, [parking, refreshSession, token])
+    }, [isOwner, parking, refreshSession, token])
   );
 
   const openAdd = () => {
@@ -162,6 +162,7 @@ export default function StaffScreen() {
     const summary = collections[staffMember.id];
     const amount = summary?.unsettledAmount || 0;
     if (amount <= 0) {
+      showToast("No cash pending for this attendant", "info");
       Alert.alert("Nothing to collect", "This attendant has no unsettled cash to collect.");
       return;
     }
@@ -184,8 +185,10 @@ export default function StaffScreen() {
                 )
               );
               setOwnerSummary(response.ownerSummary);
+              showToast(`Rs ${result.settledAmount} collected from ${staffMember.name}`, "success");
               Alert.alert("Collected", `Rs ${result.settledAmount} marked as collected by owner.`);
             } catch (e: any) {
+              showToast(e.message || "Failed to settle cash", "error");
               Alert.alert("Error", e.message || "Failed to settle cash");
             } finally {
               setSettlingId(null);

@@ -10,6 +10,22 @@ export function getApiDomain(): string {
 
 const BASE = `${getApiDomain()}/api`;
 
+export type LocationSuggestion = {
+  placeId: string;
+  description: string;
+  mainText: string;
+  secondaryText: string;
+};
+
+export type LocationDetails = {
+  placeId: string;
+  address: string;
+  city: string;
+  state: string;
+  latitude?: number;
+  longitude?: number;
+};
+
 async function req<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -44,6 +60,20 @@ export const api = {
 
   getMe: (token: string) =>
     req<{ user: any; parking: any }>("/auth/me", {}, token),
+
+  autocompleteLocations: (input: string, token: string) =>
+    req<{ suggestions: LocationSuggestion[] }>(
+      `/locations/autocomplete?${new URLSearchParams({ input }).toString()}`,
+      {},
+      token
+    ),
+
+  getLocationDetails: (placeId: string, token: string) =>
+    req<{ location: LocationDetails }>(
+      `/locations/details/${encodeURIComponent(placeId)}`,
+      {},
+      token
+    ),
 
   createParking: (data: any, token: string) =>
     req<{ parking: any }>("/parkings", { method: "POST", body: JSON.stringify(data) }, token),
@@ -143,4 +173,10 @@ export const api = {
       { method: "POST", body: JSON.stringify(data) },
       token
     ),
+
+  logFrontendError: (data: { area: string; message: string; stack?: string; metadata?: any }) =>
+    req<{ success: boolean }>("/errors/frontend", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }).catch(() => ({ success: false })),
 };

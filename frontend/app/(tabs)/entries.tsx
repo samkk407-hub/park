@@ -6,7 +6,7 @@ import {
   FlatList, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useApp, EntryStatus } from "@/context/AppContext";
+import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { EntryCard } from "@/components/EntryCard";
 

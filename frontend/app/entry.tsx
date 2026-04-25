@@ -2,31 +2,65 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState, useMemo } from "react";
 import {
-  Alert, KeyboardAvoidingView, Platform,
-  ScrollView, StyleSheet, Text, TouchableOpacity, View
+  Alert, KeyboardAvoidingView, Platform, type KeyboardTypeOptions,
+  StyleSheet, Text, TextInput, TouchableOpacity, View
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp, VehicleType, PaymentType } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { FormInput } from "@/components/FormInput";
 import { PrimaryButton } from "@/components/PrimaryButton";
-import { ScreenHeader } from "@/components/ScreenHeader";
-import { OccupancyBar } from "@/components/OccupancyBar";
 
 const VEHICLE_OPTIONS: { type: VehicleType; label: string; icon: any }[] = [
-  { type: "bike", label: "Bike", icon: "zap" },
+  { type: "bike", label: "Bike", icon: "navigation" },
   { type: "car", label: "Car", icon: "truck" },
   { type: "other", label: "Other", icon: "box" },
 ];
 
 const PAYMENT_OPTIONS: { type: PaymentType; label: string; icon: any }[] = [
-  { type: "online", label: "Owner QR / UPI", icon: "smartphone" },
+  { type: "online", label: "Owner QR / UPI", icon: "maximize" },
   { type: "offline", label: "Cash", icon: "dollar-sign" },
 ];
 const STAY_DAY_OPTIONS = [1, 2, 3, 7, 10];
+const NUMBER_PLATE_REGEX = /^[A-Z]{2}[0-9]{2}[A-Z]{2}[0-9]{4}$/;
+
+function getPlateCharType(index: number): "letter" | "digit" | null {
+  if (index < 2) return "letter";
+  if (index < 4) return "digit";
+  if (index < 6) return "letter";
+  if (index < 10) return "digit";
+  return null;
+}
+
+function sanitizeNumberPlate(value: string): string {
+  const raw = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let next = "";
+  for (const char of raw) {
+    const expected = getPlateCharType(next.length);
+    if (!expected) break;
+    if (expected === "letter" && /^[A-Z]$/.test(char)) next += char;
+    if (expected === "digit" && /^[0-9]$/.test(char)) next += char;
+  }
+  return next;
+}
+
+function formatNumberPlate(value: string): string {
+  const parts = [
+    value.slice(0, 2),
+    value.slice(2, 4),
+    value.slice(4, 6),
+    value.slice(6, 10),
+  ].filter(Boolean);
+  return parts.join(" ");
+}
+
+function getNumberPlateKeyboard(value: string): KeyboardTypeOptions {
+  return getPlateCharType(value.length) === "digit" ? "numeric" : "default";
+}
 
 export default function EntryScreen() {
   const colors = useColors();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { parking, entries, user, addEntry } = useApp();
 
   const [vehicleType, setVehicleType] = useState<VehicleType>("bike");
@@ -54,11 +88,29 @@ export default function EntryScreen() {
   const validate = () => {
     const errs: Record<string, string> = {};
     if (!numberPlate.trim()) errs.numberPlate = "Number plate is required";
-    if (numberPlate.trim().length < 4) errs.numberPlate = "Enter a valid number plate";
+    if (numberPlate.trim() && !NUMBER_PLATE_REGEX.test(numberPlate.trim())) {
+      errs.numberPlate = "Enter number plate like MH12AB1234";
+    }
     if (customerMobile && customerMobile.length !== 10) errs.customerMobile = "Enter valid 10-digit mobile";
     if (!stayDays || Number.isNaN(Number(stayDays)) || Number(stayDays) < 1) errs.stayDays = "Enter valid days";
     setErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+
+  const isPlanLimitError = (message?: string) => {
+    const text = message?.toLowerCase() || "";
+    return text.includes("entry limit") || text.includes("entry plan") || text.includes("plan khatam");
+  };
+
+  const showPlanRequired = () => {
+    Alert.alert(
+      "Entry Plan Khatam",
+      "Naya ticket katne ke liye Entry Plan purchase karo.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Buy Plan", onPress: () => router.push("/plans" as any) },
+      ]
+    );
   };
 
   const createPaidEntry = async (selectedPaymentType: PaymentType) => {
@@ -107,11 +159,8 @@ export default function EntryScreen() {
               onPress: () => {
                 void createPaidEntry("online")
                   .catch((e: any) => {
-                    if (e.message?.toLowerCase().includes("entry limit")) {
-                      Alert.alert("Plan Required", e.message, [
-                        { text: "Cancel", style: "cancel" },
-                        { text: "Buy Plan", onPress: () => router.push("/plans" as any) },
-                      ]);
+                    if (isPlanLimitError(e.message)) {
+                      showPlanRequired();
                     } else {
                       Alert.alert("Error", e.message || "Failed to confirm owner UPI payment and generate ticket");
                     }
@@ -126,11 +175,8 @@ export default function EntryScreen() {
 
       await createPaidEntry("offline");
     } catch (e: any) {
-      if (e.message?.toLowerCase().includes("entry limit")) {
-        Alert.alert("Plan Required", e.message, [
-          { text: "Cancel", style: "cancel" },
-          { text: "Buy Plan", onPress: () => router.push("/plans" as any) },
-        ]);
+      if (isPlanLimitError(e.message)) {
+        showPlanRequired();
       } else {
         Alert.alert("Error", e.message || "Failed to save entry");
       }
@@ -149,25 +195,35 @@ export default function EntryScreen() {
   );
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <View style={{ flex: 1, backgroundColor: colors.background }}>
-        <ScreenHeader title="New Entry" subtitle="Add incoming vehicle" showBack />
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-
-          {/* Occupancy Status */}
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <OccupancyBar current={insideCount} total={parking.totalCapacity} label="Current Occupancy" />
+    <KeyboardAvoidingView style={styles.screenRoot} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <View style={[styles.screenRoot, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.compactHeader,
+            {
+              backgroundColor: colors.primary + "0D",
+              borderBottomColor: colors.border,
+              paddingTop: (Platform.OS === "web" ? 8 : insets.top) + 6,
+            },
+          ]}
+        >
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.7}>
+            <Feather name="arrow-left" size={20} color={colors.foreground} />
+          </TouchableOpacity>
+          <View style={styles.headerTitleArea}>
+            <Text style={[styles.headerTitle, { color: colors.foreground }]}>New Entry</Text>
+            <Text style={[styles.headerSub, { color: colors.mutedForeground }]}>Add incoming vehicle</Text>
           </View>
-
-          {/* Vehicle Details */}
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+        </View>
+        <View style={styles.content}>
+          <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <View style={[styles.stepBadge, { backgroundColor: colors.primary }]}>
-                <Text style={styles.stepText}>1</Text>
+              <View style={[styles.sectionIcon, { backgroundColor: colors.primary }]}>
+                <Feather name="truck" size={16} color="#fff" />
               </View>
               <View>
                 <Text style={[styles.cardTitle, { color: colors.foreground }]}>Vehicle Details</Text>
-                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Select vehicle and enter customer info</Text>
+                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Select vehicle and customer info</Text>
               </View>
             </View>
             <Text style={[styles.label, { color: colors.foreground }]}>Vehicle Type</Text>
@@ -178,8 +234,10 @@ export default function EntryScreen() {
                   style={[
                     styles.optBtn,
                     {
-                      backgroundColor: vehicleType === opt.type ? colors.primary : colors.muted,
+                      backgroundColor: vehicleType === opt.type ? colors.primary + "10" : colors.card,
                       borderColor: vehicleType === opt.type ? colors.primary : colors.border,
+                      borderWidth: vehicleType === opt.type ? 1.5 : 1,
+                      shadowColor: vehicleType === opt.type ? colors.primary : "#0f172a",
                     },
                   ]}
                   onPress={() => {
@@ -187,51 +245,70 @@ export default function EntryScreen() {
                   }}
                   activeOpacity={0.8}
                 >
-                  <Feather name={opt.icon} size={18} color={vehicleType === opt.type ? "#fff" : colors.mutedForeground} />
-                  <Text style={[styles.optLabel, { color: vehicleType === opt.type ? "#fff" : colors.foreground }]}>
+                  <Feather name={opt.icon} size={18} color={vehicleType === opt.type ? colors.primary : colors.mutedForeground} />
+                  <Text style={[styles.optLabel, { color: vehicleType === opt.type ? colors.primary : colors.foreground }]}>
                     {opt.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <View style={[styles.rateTag, { backgroundColor: colors.accent }]}>
-              <Feather name="tag" size={14} color={colors.primary} />
+            <View style={[styles.rateLine, { backgroundColor: colors.primary + "12" }]}>
+              <Feather name="tag" size={16} color={colors.primary} />
               <Text style={[styles.rateText, { color: colors.primary }]}>Rate: Rs {dayRate}/day</Text>
             </View>
 
-            <FormInput
-              label="Number Plate"
-              placeholder="e.g. MH12AB1234"
-              value={numberPlate}
-              onChangeText={v => {
-                setNumberPlate(v.toUpperCase());
-                setErrors(prev => ({ ...prev, numberPlate: "" }));
-              }}
-              error={errors.numberPlate}
-              icon="credit-card"
-              autoCapitalize="characters"
-              required
-            />
-            <FormInput
-              label="Customer Mobile (Optional)"
-              placeholder="10-digit mobile"
-              value={customerMobile}
-              onChangeText={v => {
-                setCustomerMobile(v);
-                setErrors(prev => ({ ...prev, customerMobile: "" }));
-              }}
-              error={errors.customerMobile}
-              icon="phone"
-              keyboardType="phone-pad"
-              maxLength={10}
-            />
+            <View style={styles.fieldBlock}>
+              <Text style={[styles.label, { color: colors.foreground }]}>
+                Number Plate <Text style={{ color: colors.destructive }}>*</Text>
+              </Text>
+              <View style={[styles.underlineInput, { borderBottomColor: errors.numberPlate ? colors.destructive : colors.border }]}>
+                <Feather name="credit-card" size={16} color={colors.primary} />
+                <TextInput
+                  style={[styles.flatInput, { color: colors.foreground }]}
+                  placeholder="MH 12 AB 1234"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={formatNumberPlate(numberPlate)}
+                  onChangeText={v => {
+                    setNumberPlate(sanitizeNumberPlate(v));
+                    setErrors(prev => ({ ...prev, numberPlate: "" }));
+                  }}
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  keyboardType={getNumberPlateKeyboard(numberPlate)}
+                  maxLength={13}
+                />
+              </View>
+              {errors.numberPlate ? <Text style={[styles.errorText, { color: colors.destructive }]}>{errors.numberPlate}</Text> : null}
+            </View>
+
+            <View style={styles.fieldBlock}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Customer Mobile (Optional)</Text>
+              <View style={[styles.underlineInput, { borderBottomColor: errors.customerMobile ? colors.destructive : colors.border }]}>
+                <Feather name="phone" size={16} color={colors.mutedForeground} />
+                <TextInput
+                  style={[styles.flatInput, { color: colors.foreground }]}
+                  placeholder="10-digit mobile number"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={customerMobile}
+                  onChangeText={v => {
+                    setCustomerMobile(v.replace(/[^0-9]/g, ""));
+                    setErrors(prev => ({ ...prev, customerMobile: "" }));
+                  }}
+                  keyboardType="phone-pad"
+                  maxLength={10}
+                />
+              </View>
+              {errors.customerMobile ? <Text style={[styles.errorText, { color: colors.destructive }]}>{errors.customerMobile}</Text> : null}
+            </View>
           </View>
 
-          <View style={[styles.card, styles.compactCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.divider} />
+
+          <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <View style={[styles.stepBadge, { backgroundColor: colors.success }]}>
-                <Text style={styles.stepText}>2</Text>
+              <View style={[styles.sectionIcon, { backgroundColor: colors.success }]}>
+                <Feather name="calendar" size={16} color="#fff" />
               </View>
               <View>
                 <Text style={[styles.cardTitle, { color: colors.foreground }]}>Stay Duration</Text>
@@ -247,6 +324,8 @@ export default function EntryScreen() {
                     {
                       backgroundColor: plannedDays === days ? colors.success : colors.muted,
                       borderColor: plannedDays === days ? colors.success : colors.border,
+                      borderWidth: plannedDays === days ? 1.5 : 1,
+                      shadowColor: plannedDays === days ? colors.success : "#0f172a",
                     },
                   ]}
                   onPress={() => {
@@ -264,20 +343,44 @@ export default function EntryScreen() {
                 </TouchableOpacity>
               ))}
             </View>
-            <FormInput
-              label="Custom Days"
-              placeholder="1"
-              value={stayDays}
-              onChangeText={v => {
-                setStayDays(v.replace(/[^0-9]/g, ""));
-                setErrors(prev => ({ ...prev, stayDays: "" }));
-              }}
-              error={errors.stayDays}
-              icon="calendar"
-              keyboardType="numeric"
-              suffix="days"
-            />
-            <View style={[styles.totalBox, { backgroundColor: colors.successLight }]}>
+
+            <View style={styles.fieldBlock}>
+              <Text style={[styles.label, { color: colors.foreground }]}>Custom Days</Text>
+              <View style={styles.stepperRow}>
+                <TouchableOpacity
+                  style={[styles.stepperBtn, { backgroundColor: colors.muted }]}
+                  onPress={() => {
+                    setStayDays(String(Math.max(1, plannedDays - 1)));
+                    setErrors(prev => ({ ...prev, stayDays: "" }));
+                  }}
+                >
+                  <Feather name="minus" size={18} color={colors.mutedForeground} />
+                </TouchableOpacity>
+                <TextInput
+                  style={[styles.daysInput, { color: colors.foreground }]}
+                  value={stayDays}
+                  onChangeText={v => {
+                    setStayDays(v.replace(/[^0-9]/g, ""));
+                    setErrors(prev => ({ ...prev, stayDays: "" }));
+                  }}
+                  keyboardType="numeric"
+                  maxLength={3}
+                />
+                <TouchableOpacity
+                  style={[styles.stepperBtn, { backgroundColor: colors.muted }]}
+                  onPress={() => {
+                    setStayDays(String(plannedDays + 1));
+                    setErrors(prev => ({ ...prev, stayDays: "" }));
+                  }}
+                >
+                  <Feather name="plus" size={18} color={colors.mutedForeground} />
+                </TouchableOpacity>
+                <Text style={[styles.daysSuffix, { color: colors.mutedForeground }]}>days</Text>
+              </View>
+              {errors.stayDays ? <Text style={[styles.errorText, { color: colors.destructive }]}>{errors.stayDays}</Text> : null}
+            </View>
+
+            <View style={[styles.totalBox, { borderTopColor: colors.border }]}>
               <View>
                 <Text style={[styles.totalLabel, { color: colors.success }]}>Total to collect</Text>
                 <Text style={[styles.totalSub, { color: colors.mutedForeground }]}>Rs {dayRate}/day x {plannedDays} day(s)</Text>
@@ -286,15 +389,16 @@ export default function EntryScreen() {
             </View>
           </View>
 
-          {/* Payment */}
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <View style={styles.divider} />
+
+          <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <View style={[styles.stepBadge, { backgroundColor: colors.info }]}>
-                <Text style={styles.stepText}>3</Text>
+              <View style={[styles.sectionIcon, { backgroundColor: colors.info }]}>
+                <Feather name="credit-card" size={16} color="#fff" />
               </View>
               <View>
                 <Text style={[styles.cardTitle, { color: colors.foreground }]}>Payment Method</Text>
-                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Collect payment before ticket generation</Text>
+                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Collect payment before ticket</Text>
               </View>
             </View>
             <View style={styles.optionRow}>
@@ -304,9 +408,10 @@ export default function EntryScreen() {
                   style={[
                     styles.payBtn,
                     {
-                      backgroundColor: paymentType === opt.type ? colors.primary + "15" : colors.muted,
+                      backgroundColor: colors.card,
                       borderColor: paymentType === opt.type ? colors.primary : colors.border,
                       borderWidth: paymentType === opt.type ? 1.5 : 1,
+                      shadowColor: paymentType === opt.type ? colors.primary : "#0f172a",
                     },
                   ]}
                   onPress={() => setPaymentType(opt.type)}
@@ -321,155 +426,275 @@ export default function EntryScreen() {
             </View>
           </View>
 
-          {/* Entry Time */}
-          <View style={[styles.timeRow, { backgroundColor: colors.accent }]}>
-            <Feather name="clock" size={14} color={colors.primary} />
-            <Text style={[styles.timeText, { color: colors.primary }]}>
-              Entry Time: {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })} | {new Date().toLocaleDateString("en-IN")}
-            </Text>
+          <View style={[styles.timeRow, { borderTopColor: colors.border }]}>
+            <View style={styles.timeLeft}>
+              <Feather name="clock" size={14} color={colors.primary} />
+              <Text style={[styles.timeText, { color: colors.primary }]}>
+                Entry Time: {new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })} | {new Date().toLocaleDateString("en-IN")}
+              </Text>
+            </View>
+            <Text style={[styles.changeText, { color: colors.primary }]}>Change</Text>
           </View>
 
-          <PrimaryButton
-            label={paymentType === "online" ? "Confirm Owner UPI & Generate Ticket" : "Collect Cash & Generate Ticket"}
-            onPress={handleSubmit}
-            loading={loading}
-          />
-          <View style={{ height: 20 }} />
-        </ScrollView>
+        </View>
+        <View style={[styles.footerBar, { backgroundColor: colors.background, borderTopColor: colors.border }]}>
+          <View style={styles.submitLift}>
+            <PrimaryButton
+              label={paymentType === "online" ? "Confirm UPI & Generate Ticket" : "Collect Cash & Generate Ticket"}
+              onPress={handleSubmit}
+              loading={loading}
+              size="sm"
+            />
+          </View>
+        </View>
       </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  screenRoot: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  compactHeader: {
+    borderBottomWidth: 1,
+    paddingHorizontal: 12,
+    paddingBottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTitleArea: {
+    flex: 1,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontFamily: "Inter_700Bold",
+  },
+  headerSub: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+  },
   content: {
-    padding: 16,
-    gap: 14,
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingTop: 5,
+    paddingBottom: Platform.OS === "ios" ? 68 : 60,
+    gap: 5,
+    justifyContent: "space-between",
   },
-  card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 16,
-    gap: 12,
-  },
-  compactCard: {
-    gap: 10,
+  section: {
+    gap: 4,
   },
   label: {
-    fontSize: 13,
+    fontSize: 10,
     fontFamily: "Inter_500Medium",
   },
   cardTitle: {
-    fontSize: 15,
+    fontSize: 13,
     fontFamily: "Inter_600SemiBold",
   },
   cardSub: {
-    fontSize: 12,
+    fontSize: 9,
     fontFamily: "Inter_400Regular",
-    marginTop: 2,
+    marginTop: 1,
   },
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 6,
   },
-  stepBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+  sectionIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },
-  stepText: {
-    color: "#fff",
-    fontSize: 13,
-    fontFamily: "Inter_700Bold",
-  },
   optionRow: {
     flexDirection: "row",
-    gap: 10,
+    gap: 5,
   },
   optBtn: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    paddingVertical: 12,
+    minHeight: 38,
     alignItems: "center",
-    gap: 6,
-  },
-  payBtn: {
-    flex: 1,
-    borderRadius: 10,
-    paddingVertical: 14,
-    alignItems: "center",
-    gap: 6,
+    justifyContent: "center",
+    gap: 2,
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   optLabel: {
-    fontSize: 13,
+    fontSize: 10,
     fontFamily: "Inter_600SemiBold",
   },
-  rateTag: {
+  rateLine: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  rateText: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+  },
+  fieldBlock: {
+    gap: 1,
+  },
+  underlineInput: {
+    minHeight: 30,
+    borderBottomWidth: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    alignSelf: "flex-start",
   },
-  rateText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
+  flatInput: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+    paddingVertical: 2,
+  },
+  errorText: {
+    fontSize: 9,
+    fontFamily: "Inter_400Regular",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "rgba(148, 163, 184, 0.25)",
   },
   dayRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 4,
   },
   dayBtn: {
     flex: 1,
-    borderRadius: 10,
+    borderRadius: 8,
     borderWidth: 1,
-    paddingVertical: 10,
+    minHeight: 36,
     alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#0f172a",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   dayBtnText: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: "Inter_700Bold",
   },
   dayAmount: {
+    fontSize: 8,
+    fontFamily: "Inter_500Medium",
+  },
+  stepperRow: {
+    minHeight: 28,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  stepperBtn: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  daysInput: {
+    minWidth: 32,
+    textAlign: "center",
+    fontSize: 13,
+    fontFamily: "Inter_600SemiBold",
+    paddingVertical: 1,
+  },
+  daysSuffix: {
+    marginLeft: "auto",
     fontSize: 10,
     fontFamily: "Inter_500Medium",
-    marginTop: 2,
   },
   totalBox: {
-    borderRadius: 10,
-    padding: 12,
+    borderTopWidth: 1,
+    paddingTop: 4,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
   },
   totalLabel: {
-    fontSize: 13,
+    fontSize: 10,
     fontFamily: "Inter_500Medium",
   },
   totalSub: {
-    fontSize: 11,
+    fontSize: 9,
     fontFamily: "Inter_400Regular",
-    marginTop: 2,
   },
   totalAmount: {
-    fontSize: 18,
+    fontSize: 15,
     fontFamily: "Inter_700Bold",
+  },
+  payBtn: {
+    flex: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    minHeight: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    flexDirection: "row",
   },
   timeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderRadius: 8,
-    padding: 10,
+    justifyContent: "space-between",
+    borderTopWidth: 1,
+    paddingTop: 3,
+  },
+  timeLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
   timeText: {
-    fontSize: 13,
-    fontFamily: "Inter_400Regular",
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+  },
+  changeText: {
+    fontSize: 10,
+    fontFamily: "Inter_600SemiBold",
+    marginLeft: 8,
+  },
+  footerBar: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderTopWidth: 1,
+    paddingHorizontal: 12,
+    paddingTop: 5,
+    paddingBottom: Platform.OS === "ios" ? 22 : 16,
+  },
+  submitLift: {
+    borderRadius: 12,
+    shadowColor: "#2563eb",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 6,
   },
 });

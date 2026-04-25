@@ -40,6 +40,7 @@ export default function EntryDetailScreen() {
 
   const isInside = entry.status === "inside";
   const isPaid = entry.paymentStatus === "paid";
+  const paidDays = entry.plannedDurationDays || 1;
 
   const durationMinutes = entry.exitTime
     ? Math.ceil((new Date(entry.exitTime).getTime() - new Date(entry.entryTime).getTime()) / 60000)
@@ -115,6 +116,9 @@ export default function EntryDetailScreen() {
         {/* Details */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Row label="Entry Time" value={formatDT(entry.entryTime)} colors={colors} />
+          <Row label="Valid From" value={formatDT(entry.entryTime)} colors={colors} />
+          <Row label="Valid Till" value={entry.validUntil ? formatDT(entry.validUntil) : "N/A"} colors={colors} highlight />
+          <Row label="Paid Days" value={`${paidDays} day(s)`} colors={colors} />
           {entry.exitTime && <Row label="Exit Time" value={formatDT(entry.exitTime)} colors={colors} />}
           <Row label="Duration" value={formatDuration(durationMinutes)} colors={colors} />
           <Row label="Customer" value={entry.customerMobile ? `+91 ${entry.customerMobile}` : "N/A"} colors={colors} />

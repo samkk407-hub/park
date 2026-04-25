@@ -2,6 +2,7 @@ import "dotenv/config";
 import http from "node:http";
 import https from "node:https";
 import app from "./app";
+import { logError } from "./lib/errorLog";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
@@ -19,6 +20,16 @@ const keepAliveEnabled = process.env["KEEP_ALIVE_ENABLED"] === "true";
 if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection");
+  void logError({ area: "process.unhandledRejection", error: reason });
+});
+
+process.on("uncaughtException", (err) => {
+  logger.error({ err }, "Uncaught exception");
+  void logError({ area: "process.uncaughtException", error: err });
+});
 
 function startKeepAlive() {
   if (!keepAliveEnabled || !keepAliveUrl) return;

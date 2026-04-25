@@ -5,6 +5,7 @@ import {
   Inter_700Bold,
   useFonts,
 } from "@expo-google-fonts/inter";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
@@ -14,6 +15,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AppProvider, useApp } from "@/context/AppContext";
+import { api } from "@/lib/api";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -44,7 +46,7 @@ function RootLayoutNav() {
         router.replace("/setup");
       }
     }
-  }, [user, parking, isLoading, segments]);
+  }, [user, parking, isLoading, segments, router]);
 
   return (
     <Stack screenOptions={{ headerShown: false }}>
@@ -82,7 +84,17 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary>
+      <ErrorBoundary
+        onError={(error, stackTrace) => {
+          void api.logFrontendError({
+            area: "react.error-boundary",
+            message: error.message,
+            stack: error.stack,
+            metadata: { componentStack: stackTrace },
+          });
+          void AsyncStorage.multiRemove(["@parkease_token", "@parkease_user", "@parkease_parking"]);
+        }}
+      >
         <AppProvider>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
