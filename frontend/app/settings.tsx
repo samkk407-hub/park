@@ -101,6 +101,7 @@ export default function SettingsScreen() {
 
         {isOwner ? (
           <>
+            {/*
             <Text style={[styles.section, { color: colors.mutedForeground }]}>BANKING</Text>
             <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <SettingRow
@@ -110,23 +111,27 @@ export default function SettingsScreen() {
                 value="Open"
                 onPress={() => router.push("/banking")}
               />
-            <SettingRow
-              icon="file-text"
-              label="Online Collection Ledger"
-              subtitle="Record before bank settlement"
-              value="Open"
-              onPress={() => router.push("/banking")}
-            />
-            <SettingRow
-              icon="package"
-              label="Entry Plans"
-              subtitle="Free quota and paid entry packs"
-              value="Open"
-              onPress={() => router.push("/plans" as any)}
-            />
-          </View>
-        </>
-      ) : null}
+              <SettingRow
+                icon="file-text"
+                label="Online Collection Ledger"
+                subtitle="Record before bank settlement"
+                value="Open"
+                onPress={() => router.push("/banking")}
+              />
+            </View>
+            */}
+            <Text style={[styles.section, { color: colors.mutedForeground }]}>PLANS</Text>
+            <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <SettingRow
+                icon="package"
+                label="Entry Plans"
+                subtitle="Free quota and paid entry packs"
+                value="Open"
+                onPress={() => router.push("/plans" as any)}
+              />
+            </View>
+          </>
+        ) : null}
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>INTEGRATIONS</Text>
         <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>

@@ -164,6 +164,7 @@ export default function MoreScreen() {
               subtitle="Add and manage parking staff"
               onPress={() => router.push("/staff")}
             />
+            {/*
             <MenuItem
               icon="credit-card"
               label="Bank Account"
@@ -171,6 +172,7 @@ export default function MoreScreen() {
               onPress={() => router.push("/banking")}
               color={colors.success}
             />
+            */}
             <MenuItem
               icon="package"
               label="Entry Plans"
