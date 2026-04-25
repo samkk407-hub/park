@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import { useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
 import {
   Alert, FlatList, KeyboardAvoidingView, Modal,
@@ -28,6 +29,7 @@ interface AttendantCollection {
 
 export default function StaffScreen() {
   const { user, token, parking, staff, addStaff, updateStaff, deleteStaff, refreshSession } = useApp();
+  const params = useLocalSearchParams<{ add?: string }>();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
@@ -78,6 +80,12 @@ export default function StaffScreen() {
     setErrors({});
     setModalVisible(true);
   };
+
+  React.useEffect(() => {
+    if (params.add === "1" && isOwner) {
+      openAdd();
+    }
+  }, [isOwner, params.add]);
 
   const openEdit = (s: Staff) => {
     setEditingStaff(s);

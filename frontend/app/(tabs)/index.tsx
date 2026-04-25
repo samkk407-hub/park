@@ -196,15 +196,35 @@ export default function DashboardScreen() {
       )}
 
       {(user?.role === "owner" || user?.role === "superadmin") && (
-        <View style={styles.gridRow}>
-          <StatsCard
-            label="Owner UPI Total"
-            value={`Rs ${stats.ownerWalletBalance}`}
-            icon="credit-card"
-            color={stats.ownerWalletBalance > 0 ? colors.primary : colors.success}
-            bgColor={stats.ownerWalletBalance > 0 ? colors.accent : colors.successLight}
-            subtitle={stats.ownerWalletBalance > 0 ? "Paid to owner barcode" : "No owner UPI today"}
-          />
+        <View style={styles.ownerPanel}>
+          <View style={styles.gridRow}>
+            <StatsCard
+              label="Owner UPI Total"
+              value={`Rs ${stats.ownerWalletBalance}`}
+              icon="credit-card"
+              color={stats.ownerWalletBalance > 0 ? colors.primary : colors.success}
+              bgColor={stats.ownerWalletBalance > 0 ? colors.accent : colors.successLight}
+              subtitle={stats.ownerWalletBalance > 0 ? "Paid to owner barcode" : "No owner UPI today"}
+            />
+          </View>
+          <View style={styles.ownerToolsRow}>
+            <TouchableOpacity
+              style={[styles.ownerToolBtn, { backgroundColor: colors.primary }]}
+              onPress={() => router.push({ pathname: "/staff", params: { add: "1" } })}
+              activeOpacity={0.85}
+            >
+              <Feather name="user-plus" size={16} color="#fff" />
+              <Text style={styles.actionBtnText}>Add Attendant</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.ownerToolBtn, { backgroundColor: colors.warning }]}
+              onPress={() => router.push("/plans" as any)}
+              activeOpacity={0.85}
+            >
+              <Feather name="package" size={16} color="#fff" />
+              <Text style={styles.actionBtnText}>Entry Plans</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -330,6 +350,23 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 13,
     fontWeight: "600",
+  },
+  ownerPanel: {
+    gap: 8,
+  },
+  ownerToolsRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  ownerToolBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    gap: 6,
   },
   sectionRow: {
     flexDirection: "row",
