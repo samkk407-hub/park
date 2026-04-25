@@ -33,23 +33,40 @@ app.use(
     },
   }),
 );
-const allowedOrigins = (process.env["CORS_ORIGIN"] || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const defaultDevOrigins = [
+const defaultAllowedOrigins = [
   "http://localhost:5173",
   "http://localhost:8081",
   "http://localhost:19006",
   "http://localhost:3000",
 ];
 
+function getAllowedOrigins() {
+  const envOrigins = (process.env["CORS_ORIGINS"] || process.env["CORS_ORIGIN"] || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/$/, ""))
+    .filter(Boolean);
+
+  return Array.from(new Set([...defaultAllowedOrigins, ...envOrigins]));
+}
+
+const allowedOrigins = getAllowedOrigins();
+const allowAnyOrigin = allowedOrigins.includes("*");
+
 app.use(cors({
-  origin: allowedOrigins.length > 0
-    ? allowedOrigins
-    : process.env["NODE_ENV"] === "production"
-      ? false
-      : defaultDevOrigins,
+  origin(origin, callback) {
+    if (!origin || allowAnyOrigin) {
+      callback(null, true);
+      return;
+    }
+
+    const normalizedOrigin = origin.replace(/\/$/, "");
+    if (allowedOrigins.includes(normalizedOrigin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`CORS origin not allowed: ${origin}`));
+  },
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

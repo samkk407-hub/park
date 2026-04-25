@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
+import { getApiDomain } from "@/lib/api";
 
 export default function TicketScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -218,10 +219,7 @@ function formatDateTime(iso: string): string {
 
 function getTicketUrl(publicToken?: string): string {
   if (!publicToken) return "";
-  const domain = process.env.EXPO_PUBLIC_DOMAIN;
-  if (!domain) return "";
-  const base = domain.startsWith("http") ? domain : `http://${domain}`;
-  return `${base.replace(/\/$/, "")}/api/entries/public-ticket/${publicToken}`;
+  return `${getApiDomain()}/api/entries/public-ticket/${publicToken}`;
 }
 
 const styles = StyleSheet.create({

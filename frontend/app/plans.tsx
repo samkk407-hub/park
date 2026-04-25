@@ -16,7 +16,7 @@ import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { useApp } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
-import { api } from "@/lib/api";
+import { api, getApiDomain } from "@/lib/api";
 
 export default function PlansScreen() {
   const { token, parking, user } = useApp();
@@ -66,10 +66,7 @@ export default function PlansScreen() {
         },
         token
       );
-      const base = process.env.EXPO_PUBLIC_DOMAIN
-        ? `${process.env.EXPO_PUBLIC_DOMAIN.startsWith("http") ? "" : "http://"}${process.env.EXPO_PUBLIC_DOMAIN}`
-        : "";
-      await WebBrowser.openBrowserAsync(`${base}${response.checkoutUrl}`);
+      await WebBrowser.openBrowserAsync(`${getApiDomain()}${response.checkoutUrl}`);
       Alert.alert(
         "Payment Started",
         `${selectedPlan?.name || "Plan"} Razorpay checkout has opened. Entries will be added automatically after successful payment.`

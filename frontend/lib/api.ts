@@ -1,6 +1,14 @@
-const BASE = process.env.EXPO_PUBLIC_DOMAIN
-  ? `${process.env.EXPO_PUBLIC_DOMAIN.startsWith("http") ? "" : "http://"}${process.env.EXPO_PUBLIC_DOMAIN}/api`
-  : "/api";
+import Constants from "expo-constants";
+
+export function getApiDomain(): string {
+  const domain = process.env.EXPO_PUBLIC_DOMAIN || Constants.expoConfig?.extra?.apiDomain;
+  if (!domain) {
+    throw new Error("EXPO_PUBLIC_DOMAIN is missing. Please set it in frontend/.env and rebuild the app.");
+  }
+  return `${domain.startsWith("http") ? "" : "http://"}${domain}`.replace(/\/$/, "");
+}
+
+const BASE = `${getApiDomain()}/api`;
 
 async function req<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
   const headers: Record<string, string> = {
