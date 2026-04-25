@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React from "react";
 import {
@@ -21,7 +20,11 @@ export default function MoreScreen() {
   const botPad = isWeb ? 34 : insets.bottom + 90;
 
   const isAdmin = user?.role === "admin";
-  const isOwner = user?.role === "owner" || user?.role === "admin";
+  const isOwner = user?.role === "owner" || user?.role === "admin" || user?.role === "superadmin";
+  const displayName =
+    user?.name && user.name !== "New User"
+      ? user.name
+      : parking?.ownerName || "Owner";
 
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -30,7 +33,6 @@ export default function MoreScreen() {
         text: "Sign Out",
         style: "destructive",
         onPress: async () => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
           await logout();
           router.replace("/login");
         },
@@ -89,10 +91,10 @@ export default function MoreScreen() {
         <Text style={[styles.screenTitle, { color: colors.foreground }]}>More</Text>
         <View style={[styles.profileCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-            <Text style={styles.avatarText}>{user?.name?.charAt(0).toUpperCase()}</Text>
+            <Text style={styles.avatarText}>{displayName.charAt(0).toUpperCase()}</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.profileName, { color: colors.foreground }]}>{user?.name}</Text>
+            <Text style={[styles.profileName, { color: colors.foreground }]}>{displayName}</Text>
             <Text style={[styles.profileMobile, { color: colors.mutedForeground }]}>+91 {user?.mobile}</Text>
             <View style={[styles.roleBadge, { backgroundColor: colors.accent }]}>
               <Text style={[styles.roleText, { color: colors.primary }]}>{user?.role?.toUpperCase()}</Text>
@@ -124,13 +126,14 @@ export default function MoreScreen() {
           label="New Vehicle Entry"
           subtitle="Log a vehicle entering"
           onPress={() => router.push("/entry")}
+          color={colors.success}
         />
         <MenuItem
           icon="log-out"
           label="Vehicle Exit"
           subtitle="Process vehicle checkout"
           onPress={() => router.push("/exit")}
-          color={colors.success}
+          color={colors.destructive}
         />
         <MenuItem
           icon="list"
@@ -167,6 +170,13 @@ export default function MoreScreen() {
               subtitle="Add owner settlement bank details"
               onPress={() => router.push("/banking")}
               color={colors.success}
+            />
+            <MenuItem
+              icon="package"
+              label="Entry Plans"
+              subtitle="Buy entry quota after free limit"
+              onPress={() => router.push("/plans" as any)}
+              color={colors.warning}
             />
           </View>
         </>

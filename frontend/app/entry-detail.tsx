@@ -1,10 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useMemo } from "react";
 import {
-  Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View
+  Alert, Platform, ScrollView, StyleSheet, Text, View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApp } from "@/context/AppContext";
@@ -47,21 +46,27 @@ export default function EntryDetailScreen() {
     : Math.ceil((Date.now() - new Date(entry.entryTime).getTime()) / 60000);
 
   const finalAmount = () => {
-    const hours = Math.max(1, Math.ceil(durationMinutes / 60));
+    const usedDays = Math.max(1, Math.ceil(durationMinutes / (60 * 24)));
     const rate = entry.vehicleType === "bike" ? parking.bikeRate
       : entry.vehicleType === "car" ? parking.carRate
       : parking.otherRate;
-    return hours * rate;
+    return Math.max(entry.amount, usedDays * rate);
   };
 
   const handleExit = () => {
+    if (finalAmount() > entry.amount) {
+      Alert.alert("Extra Payment Required", "Open the exit screen to collect the extra day-wise amount before checkout.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Open Exit", onPress: () => router.push("/exit") },
+      ]);
+      return;
+    }
     Alert.alert("Confirm Exit", `Checkout ${entry.numberPlate}?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Confirm",
         onPress: async () => {
           await exitVehicle(entry.id, new Date().toISOString());
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
           router.back();
         },
       },
@@ -120,8 +125,8 @@ export default function EntryDetailScreen() {
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Payment</Text>
           <Row label="Method" value={entry.paymentType === "online" ? "Online / UPI" : "Cash / Offline"} colors={colors} />
-          <Row label="Rate" value={`₹${entry.amount}/hr`} colors={colors} />
-          <Row label="Final Amount" value={`₹${finalAmount()}`} colors={colors} highlight />
+          <Row label="Paid Amount" value={`Rs ${entry.amount}`} colors={colors} />
+          <Row label="Final Amount" value={`Rs ${finalAmount()}`} colors={colors} highlight />
           <View style={[
             styles.payBadge,
             { backgroundColor: isPaid ? colors.successLight : colors.warningLight },

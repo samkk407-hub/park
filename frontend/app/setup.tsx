@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -104,9 +103,8 @@ export default function SetupScreen() {
         carCapacity: Number(form.carCapacity) || 0,
         notes: form.notes,
       });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/");
-    } catch (e) {
+    } catch {
       Alert.alert("Error", "Failed to save parking profile");
     } finally {
       setLoading(false);
@@ -193,7 +191,7 @@ export default function SetupScreen() {
           <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.sectionHeader}>
               <Feather name="tag" size={16} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Parking Rates (per hour)</Text>
+              <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Parking Rates (per day)</Text>
             </View>
             <View style={styles.row}>
               <View style={{ flex: 1 }}>
@@ -205,7 +203,7 @@ export default function SetupScreen() {
                   error={errors.bikeRate}
                   keyboardType="numeric"
                   icon="zap"
-                  suffix="₹/hr"
+                  suffix="Rs/day"
                   required
                 />
               </View>
@@ -218,7 +216,7 @@ export default function SetupScreen() {
                   error={errors.carRate}
                   keyboardType="numeric"
                   icon="truck"
-                  suffix="₹/hr"
+                  suffix="Rs/day"
                   required
                 />
               </View>
@@ -230,7 +228,7 @@ export default function SetupScreen() {
               onChangeText={v => set("otherRate", v)}
               keyboardType="numeric"
               icon="box"
-              suffix="₹/hr"
+              suffix="Rs/day"
             />
           </View>
 

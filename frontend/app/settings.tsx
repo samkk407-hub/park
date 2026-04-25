@@ -65,8 +65,8 @@ export default function SettingsScreen() {
         <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <SettingRow icon="map-pin" label="Name" value={parking?.name || "Not set"} />
           <SettingRow icon="map" label="Location" value={parking?.location || "Not set"} />
-          <SettingRow icon="zap" label="Bike Rate" value={parking ? `Rs ${parking.bikeRate}/hr` : "-"} />
-          <SettingRow icon="truck" label="Car Rate" value={parking ? `Rs ${parking.carRate}/hr` : "-"} />
+          <SettingRow icon="zap" label="Bike Rate" value={parking ? `Rs ${parking.bikeRate}/day` : "-"} />
+          <SettingRow icon="truck" label="Car Rate" value={parking ? `Rs ${parking.carRate}/day` : "-"} />
           <SettingRow icon="layers" label="Capacity" value={parking ? String(parking.totalCapacity) : "-"} />
           <SettingRow
             icon="edit"
@@ -110,16 +110,23 @@ export default function SettingsScreen() {
                 value="Open"
                 onPress={() => router.push("/banking")}
               />
-              <SettingRow
-                icon="file-text"
-                label="Online Collection Ledger"
-                subtitle="Record before bank settlement"
-                value="Open"
-                onPress={() => router.push("/banking")}
-              />
-            </View>
-          </>
-        ) : null}
+            <SettingRow
+              icon="file-text"
+              label="Online Collection Ledger"
+              subtitle="Record before bank settlement"
+              value="Open"
+              onPress={() => router.push("/banking")}
+            />
+            <SettingRow
+              icon="package"
+              label="Entry Plans"
+              subtitle="Free quota and paid entry packs"
+              value="Open"
+              onPress={() => router.push("/plans" as any)}
+            />
+          </View>
+        </>
+      ) : null}
 
         <Text style={[styles.section, { color: colors.mutedForeground }]}>INTEGRATIONS</Text>
         <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>

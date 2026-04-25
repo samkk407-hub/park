@@ -2,34 +2,24 @@ import { Router, Request, Response } from "express";
 import { authMiddleware } from "../lib/auth";
 import { OwnerBankAccount } from "../models/OwnerBankAccount";
 import { BankSettlement } from "../models/BankSettlement";
-import { Parking } from "../models/Parking";
 import { VehicleEntry } from "../models/VehicleEntry";
 import { User } from "../models/User";
 import { ActivityLog } from "../models/ActivityLog";
+import { getAuth, requireParkingAccess } from "../lib/access";
 
 const router = Router();
 
-async function getAuthorizedParking(
-  parkingId: string,
-  userId: string,
-  userRole: string
-) {
-  const parking = await Parking.findById(parkingId);
-  if (!parking) return null;
-  if (userRole === "superadmin" || parking.ownerId === userId) return parking;
-  return undefined;
+function baseAmountExpr() {
+  return { $ifNull: ["$baseAmount", { $subtract: ["$amount", { $ifNull: ["$overstayAmount", 0] }] }] };
 }
 
 router.get("/account", authMiddleware, async (req: Request, res: Response) => {
-  const userId = (req as any).userId as string;
-  const userRole = (req as any).userRole as string;
+  const { userId, userRole } = getAuth(req);
+  if (!userId || !userRole) return res.status(401).json({ error: "Unauthorized" });
   const { parkingId } = req.query as any;
 
-  if (!parkingId) return res.status(400).json({ error: "parkingId required" });
-
-  const parking = await getAuthorizedParking(parkingId, userId, userRole);
-  if (parking === null) return res.status(404).json({ error: "Parking not found" });
-  if (parking === undefined) return res.status(403).json({ error: "Unauthorized parking access" });
+  const parking = await requireParkingAccess(req, res, parkingId);
+  if (!parking) return;
 
   const [bankAccount, walletAgg, settledAgg, recentSettlements] = await Promise.all([
     OwnerBankAccount.findOne({ parkingId, isActive: true }).lean(),
@@ -38,32 +28,59 @@ router.get("/account", authMiddleware, async (req: Request, res: Response) => {
         $match: {
           parkingId,
           paymentStatus: "paid",
-          paymentType: "online",
-          paymentCollectedByRole: "owner",
+          $or: [
+            {
+              paymentType: "online",
+              paymentCollectedByRole: "owner",
+            },
+            {
+              overstayPaymentType: "online",
+              overstayCollectedByRole: "owner",
+            },
+          ],
         },
       },
       {
         $group: {
           _id: null,
-          totalCollected: { $sum: "$amount" },
+          totalCollected: {
+            $sum: {
+              $add: [
+                { $cond: [{ $eq: ["$paymentType", "online"] }, baseAmountExpr(), 0] },
+                { $cond: [{ $eq: ["$overstayPaymentType", "online"] }, { $ifNull: ["$overstayAmount", 0] }, 0] },
+              ],
+            },
+          },
           walletBalance: {
             $sum: {
-              $cond: [{ $eq: ["$onlineSettlementStatus", "unsettled"] }, "$amount", 0],
+              $add: [
+                { $cond: [{ $eq: ["$onlineSettlementStatus", "unsettled"] }, baseAmountExpr(), 0] },
+                { $cond: [{ $eq: ["$overstayOnlineSettlementStatus", "unsettled"] }, { $ifNull: ["$overstayAmount", 0] }, 0] },
+              ],
             },
           },
           pendingToBank: {
             $sum: {
-              $cond: [{ $eq: ["$onlineSettlementStatus", "pending"] }, "$amount", 0],
+              $add: [
+                { $cond: [{ $eq: ["$onlineSettlementStatus", "pending"] }, baseAmountExpr(), 0] },
+                { $cond: [{ $eq: ["$overstayOnlineSettlementStatus", "pending"] }, { $ifNull: ["$overstayAmount", 0] }, 0] },
+              ],
             },
           },
           unsettledCount: {
             $sum: {
-              $cond: [{ $eq: ["$onlineSettlementStatus", "unsettled"] }, 1, 0],
+              $add: [
+                { $cond: [{ $eq: ["$onlineSettlementStatus", "unsettled"] }, 1, 0] },
+                { $cond: [{ $eq: ["$overstayOnlineSettlementStatus", "unsettled"] }, 1, 0] },
+              ],
             },
           },
           pendingCount: {
             $sum: {
-              $cond: [{ $eq: ["$onlineSettlementStatus", "pending"] }, 1, 0],
+              $add: [
+                { $cond: [{ $eq: ["$onlineSettlementStatus", "pending"] }, 1, 0] },
+                { $cond: [{ $eq: ["$overstayOnlineSettlementStatus", "pending"] }, 1, 0] },
+              ],
             },
           },
         },
@@ -98,8 +115,8 @@ router.get("/account", authMiddleware, async (req: Request, res: Response) => {
 });
 
 router.post("/account", authMiddleware, async (req: Request, res: Response) => {
-  const userId = (req as any).userId as string;
-  const userRole = (req as any).userRole as string;
+  const { userId, userRole } = getAuth(req);
+  if (!userId || !userRole) return res.status(401).json({ error: "Unauthorized" });
   const {
     parkingId,
     accountHolderName,
@@ -113,9 +130,8 @@ router.post("/account", authMiddleware, async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Required bank account fields are missing" });
   }
 
-  const parking = await getAuthorizedParking(parkingId, userId, userRole);
-  if (parking === null) return res.status(404).json({ error: "Parking not found" });
-  if (parking === undefined) return res.status(403).json({ error: "Unauthorized parking access" });
+  const parking = await requireParkingAccess(req, res, parkingId);
+  if (!parking) return;
 
   const bankAccount = await OwnerBankAccount.findOneAndUpdate(
     { parkingId },
@@ -148,15 +164,12 @@ router.post("/account", authMiddleware, async (req: Request, res: Response) => {
 });
 
 router.post("/settle-wallet", authMiddleware, async (req: Request, res: Response) => {
-  const userId = (req as any).userId as string;
-  const userRole = (req as any).userRole as string;
+  const { userId, userRole } = getAuth(req);
+  if (!userId || !userRole) return res.status(401).json({ error: "Unauthorized" });
   const { parkingId } = req.body as any;
 
-  if (!parkingId) return res.status(400).json({ error: "parkingId required" });
-
-  const parking = await getAuthorizedParking(parkingId, userId, userRole);
-  if (parking === null) return res.status(404).json({ error: "Parking not found" });
-  if (parking === undefined) return res.status(403).json({ error: "Unauthorized parking access" });
+  const parking = await requireParkingAccess(req, res, parkingId);
+  if (!parking) return;
 
   const [user, bankAccount, unsettledEntries] = await Promise.all([
     User.findById(userId),
@@ -164,16 +177,48 @@ router.post("/settle-wallet", authMiddleware, async (req: Request, res: Response
     VehicleEntry.find({
       parkingId,
       paymentStatus: "paid",
-      paymentType: "online",
-      paymentCollectedByRole: "owner",
-      onlineSettlementStatus: "unsettled",
+      $or: [
+        {
+          paymentType: "online",
+          paymentCollectedByRole: "owner",
+          onlineSettlementStatus: "unsettled",
+        },
+        {
+          overstayPaymentType: "online",
+          overstayCollectedByRole: "owner",
+          overstayOnlineSettlementStatus: "unsettled",
+        },
+      ],
     }),
   ]);
 
   if (!user) return res.status(401).json({ error: "Unauthorized" });
   if (!bankAccount) return res.status(400).json({ error: "Add bank account first" });
 
-  const amount = unsettledEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const baseEntryIds = unsettledEntries
+    .filter((entry) =>
+      entry.paymentType === "online" &&
+      entry.paymentCollectedByRole === "owner" &&
+      entry.onlineSettlementStatus === "unsettled"
+    )
+    .map((entry) => entry._id.toString());
+  const overstayEntryIds = unsettledEntries
+    .filter((entry) =>
+      entry.overstayPaymentType === "online" &&
+      entry.overstayCollectedByRole === "owner" &&
+      entry.overstayOnlineSettlementStatus === "unsettled"
+    )
+    .map((entry) => entry._id.toString());
+  const amount = unsettledEntries.reduce((sum, entry) => {
+    const baseAmount = entry.baseAmount || Math.max(entry.amount - (entry.overstayAmount || 0), 0);
+    const baseOnline = entry.paymentType === "online" &&
+      entry.paymentCollectedByRole === "owner" &&
+      entry.onlineSettlementStatus === "unsettled";
+    const overstayOnline = entry.overstayPaymentType === "online" &&
+      entry.overstayCollectedByRole === "owner" &&
+      entry.overstayOnlineSettlementStatus === "unsettled";
+    return sum + (baseOnline ? baseAmount : 0) + (overstayOnline ? entry.overstayAmount || 0 : 0);
+  }, 0);
   if (unsettledEntries.length === 0) {
     return res.json({ success: true, amount: 0, transactionCount: 0 });
   }
@@ -185,19 +230,33 @@ router.post("/settle-wallet", authMiddleware, async (req: Request, res: Response
     amount,
     transactionCount: unsettledEntries.length,
     entryIds: unsettledEntries.map((entry) => entry._id.toString()),
+    baseEntryIds,
+    overstayEntryIds,
     status: "pending",
   });
 
-  await VehicleEntry.updateMany(
-    { _id: { $in: unsettledEntries.map((entry) => entry._id) } },
-    {
-      $set: {
-        onlineSettlementStatus: "pending",
-        onlineSettledAt: undefined,
-        onlineSettlementId: settlement._id.toString(),
-      },
-    }
-  );
+  await Promise.all([
+    VehicleEntry.updateMany(
+      { _id: { $in: baseEntryIds } },
+      {
+        $set: {
+          onlineSettlementStatus: "pending",
+          onlineSettledAt: undefined,
+          onlineSettlementId: settlement._id.toString(),
+        },
+      }
+    ),
+    VehicleEntry.updateMany(
+      { _id: { $in: overstayEntryIds } },
+      {
+        $set: {
+          overstayOnlineSettlementStatus: "pending",
+          overstayOnlineSettledAt: undefined,
+          overstayOnlineSettlementId: settlement._id.toString(),
+        },
+      }
+    ),
+  ]);
 
   await ActivityLog.create({
     parkingId,

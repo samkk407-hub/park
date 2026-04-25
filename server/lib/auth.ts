@@ -1,14 +1,13 @@
 
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-
-const JWT_SECRET = process.env["JWT_SECRET"] || "parkease-jwt-secret-2024";
+import { getJwtSecret } from "./config";
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   const auth = req.headers["authorization"];
   if (!auth) { res.status(401).json({ error: "Unauthorized" }); return; }
   try {
-    const decoded = jwt.verify(auth.replace("Bearer ", ""), JWT_SECRET) as { userId: string; role: string };
+    const decoded = jwt.verify(auth.replace("Bearer ", ""), getJwtSecret()) as { userId: string; role: string };
     (req as any).userId = decoded.userId;
     (req as any).userRole = decoded.role;
     next();

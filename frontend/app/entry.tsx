@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useState, useMemo } from "react";
 import {
@@ -23,15 +22,17 @@ const PAYMENT_OPTIONS: { type: PaymentType; label: string; icon: any }[] = [
   { type: "online", label: "Online / UPI", icon: "wifi" },
   { type: "offline", label: "Cash / Offline", icon: "dollar-sign" },
 ];
+const STAY_DAY_OPTIONS = [1, 2, 3, 7, 10];
 
 export default function EntryScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { parking, entries, user, addEntry, updatePaymentStatus } = useApp();
+  const { parking, entries, user, addEntry } = useApp();
 
   const [vehicleType, setVehicleType] = useState<VehicleType>("bike");
   const [numberPlate, setNumberPlate] = useState("");
   const [customerMobile, setCustomerMobile] = useState("");
+  const [stayDays, setStayDays] = useState("1");
   const [paymentType, setPaymentType] = useState<PaymentType>("offline");
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -41,6 +42,9 @@ export default function EntryScreen() {
     : vehicleType === "car" ? parking.carRate
     : parking.otherRate
     : 0;
+  const plannedDays = Math.max(1, Math.ceil(Number(stayDays) || 1));
+  const dayRate = rate;
+  const totalAmount = dayRate * plannedDays;
 
   const insideCount = useMemo(() =>
     entries.filter(e => e.status === "inside").length,
@@ -52,6 +56,7 @@ export default function EntryScreen() {
     if (!numberPlate.trim()) errs.numberPlate = "Number plate is required";
     if (numberPlate.trim().length < 4) errs.numberPlate = "Enter a valid number plate";
     if (customerMobile && customerMobile.length !== 10) errs.customerMobile = "Enter valid 10-digit mobile";
+    if (!stayDays || Number.isNaN(Number(stayDays)) || Number(stayDays) < 1) errs.stayDays = "Enter valid days";
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -62,16 +67,15 @@ export default function EntryScreen() {
       numberPlate: numberPlate.trim().toUpperCase(),
       customerMobile: customerMobile.trim(),
       entryTime: new Date().toISOString(),
+      plannedDurationDays: plannedDays,
       paymentType: selectedPaymentType,
-      paymentStatus: "pending",
-      amount: rate,
+      paymentStatus: "paid",
+      amount: totalAmount,
       status: "inside",
       attendantId: user?.id || "",
       attendantName: user?.name || "Unknown",
     });
 
-    await updatePaymentStatus(entry.id, "paid", selectedPaymentType);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     router.replace({ pathname: "/ticket", params: { id: entry.id } });
   };
 
@@ -91,7 +95,7 @@ export default function EntryScreen() {
       if (paymentType === "online") {
         Alert.alert(
           "Razorpay Demo",
-          `Demo checkout for Rs ${rate}. Continue payment and generate ticket?`,
+          `Demo checkout for Rs ${totalAmount} (${plannedDays} day). Continue payment and generate ticket?`,
           [
             {
               text: "Cancel",
@@ -102,8 +106,15 @@ export default function EntryScreen() {
               text: "Pay Now",
               onPress: () => {
                 void createPaidEntry("online")
-                  .catch(() => {
-                    Alert.alert("Error", "Failed to complete online payment and generate ticket");
+                  .catch((e: any) => {
+                    if (e.message?.toLowerCase().includes("entry limit")) {
+                      Alert.alert("Plan Required", e.message, [
+                        { text: "Cancel", style: "cancel" },
+                        { text: "Buy Plan", onPress: () => router.push("/plans" as any) },
+                      ]);
+                    } else {
+                      Alert.alert("Error", e.message || "Failed to complete online payment and generate ticket");
+                    }
                   })
                   .finally(() => setLoading(false));
               },
@@ -114,8 +125,15 @@ export default function EntryScreen() {
       }
 
       await createPaidEntry("offline");
-    } catch (e) {
-      Alert.alert("Error", "Failed to save entry");
+    } catch (e: any) {
+      if (e.message?.toLowerCase().includes("entry limit")) {
+        Alert.alert("Plan Required", e.message, [
+          { text: "Cancel", style: "cancel" },
+          { text: "Buy Plan", onPress: () => router.push("/plans" as any) },
+        ]);
+      } else {
+        Alert.alert("Error", e.message || "Failed to save entry");
+      }
     } finally {
       if (paymentType !== "online") {
         setLoading(false);
@@ -141,8 +159,17 @@ export default function EntryScreen() {
             <OccupancyBar current={insideCount} total={parking.totalCapacity} label="Current Occupancy" />
           </View>
 
-          {/* Vehicle Type */}
+          {/* Vehicle Details */}
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.stepBadge, { backgroundColor: colors.primary }]}>
+                <Text style={styles.stepText}>1</Text>
+              </View>
+              <View>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>Vehicle Details</Text>
+                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Select vehicle and enter customer info</Text>
+              </View>
+            </View>
             <Text style={[styles.label, { color: colors.foreground }]}>Vehicle Type</Text>
             <View style={styles.optionRow}>
               {VEHICLE_OPTIONS.map(opt => (
@@ -157,7 +184,6 @@ export default function EntryScreen() {
                   ]}
                   onPress={() => {
                     setVehicleType(opt.type);
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
                   activeOpacity={0.8}
                 >
@@ -171,13 +197,9 @@ export default function EntryScreen() {
 
             <View style={[styles.rateTag, { backgroundColor: colors.accent }]}>
               <Feather name="tag" size={14} color={colors.primary} />
-              <Text style={[styles.rateText, { color: colors.primary }]}>Rate: Rs {rate}/hr</Text>
+              <Text style={[styles.rateText, { color: colors.primary }]}>Rate: Rs {dayRate}/day</Text>
             </View>
-          </View>
 
-          {/* Vehicle Details */}
-          <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Vehicle Details</Text>
             <FormInput
               label="Number Plate"
               placeholder="e.g. MH12AB1234"
@@ -206,9 +228,75 @@ export default function EntryScreen() {
             />
           </View>
 
+          <View style={[styles.card, styles.compactCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.stepBadge, { backgroundColor: colors.success }]}>
+                <Text style={styles.stepText}>2</Text>
+              </View>
+              <View>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>Stay Duration</Text>
+                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Choose paid days for this ticket</Text>
+              </View>
+            </View>
+            <View style={styles.dayRow}>
+              {STAY_DAY_OPTIONS.map((days) => (
+                <TouchableOpacity
+                  key={days}
+                  style={[
+                    styles.dayBtn,
+                    {
+                      backgroundColor: plannedDays === days ? colors.success : colors.muted,
+                      borderColor: plannedDays === days ? colors.success : colors.border,
+                    },
+                  ]}
+                  onPress={() => {
+                    setStayDays(String(days));
+                    setErrors(prev => ({ ...prev, stayDays: "" }));
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.dayBtnText, { color: plannedDays === days ? "#fff" : colors.foreground }]}>
+                    {days}D
+                  </Text>
+                  <Text style={[styles.dayAmount, { color: plannedDays === days ? "#fff" : colors.mutedForeground }]}>
+                    Rs {dayRate * days}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <FormInput
+              label="Custom Days"
+              placeholder="1"
+              value={stayDays}
+              onChangeText={v => {
+                setStayDays(v.replace(/[^0-9]/g, ""));
+                setErrors(prev => ({ ...prev, stayDays: "" }));
+              }}
+              error={errors.stayDays}
+              icon="calendar"
+              keyboardType="numeric"
+              suffix="days"
+            />
+            <View style={[styles.totalBox, { backgroundColor: colors.successLight }]}>
+              <View>
+                <Text style={[styles.totalLabel, { color: colors.success }]}>Total to collect</Text>
+                <Text style={[styles.totalSub, { color: colors.mutedForeground }]}>Rs {dayRate}/day x {plannedDays} day(s)</Text>
+              </View>
+              <Text style={[styles.totalAmount, { color: colors.success }]}>Rs {totalAmount}</Text>
+            </View>
+          </View>
+
           {/* Payment */}
           <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.cardTitle, { color: colors.foreground }]}>Payment Method</Text>
+            <View style={styles.sectionHeader}>
+              <View style={[styles.stepBadge, { backgroundColor: colors.info }]}>
+                <Text style={styles.stepText}>3</Text>
+              </View>
+              <View>
+                <Text style={[styles.cardTitle, { color: colors.foreground }]}>Payment Method</Text>
+                <Text style={[styles.cardSub, { color: colors.mutedForeground }]}>Collect payment before ticket generation</Text>
+              </View>
+            </View>
             <View style={styles.optionRow}>
               {PAYMENT_OPTIONS.map(opt => (
                 <TouchableOpacity
@@ -264,6 +352,9 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  compactCard: {
+    gap: 10,
+  },
   label: {
     fontSize: 13,
     fontFamily: "Inter_500Medium",
@@ -271,6 +362,28 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 15,
     fontFamily: "Inter_600SemiBold",
+  },
+  cardSub: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  stepBadge: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepText: {
+    color: "#fff",
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
   },
   optionRow: {
     flexDirection: "row",
@@ -307,6 +420,46 @@ const styles = StyleSheet.create({
   rateText: {
     fontSize: 14,
     fontFamily: "Inter_600SemiBold",
+  },
+  dayRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  dayBtn: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  dayBtnText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
+  },
+  dayAmount: {
+    fontSize: 10,
+    fontFamily: "Inter_500Medium",
+    marginTop: 2,
+  },
+  totalBox: {
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  totalLabel: {
+    fontSize: 13,
+    fontFamily: "Inter_500Medium",
+  },
+  totalSub: {
+    fontSize: 11,
+    fontFamily: "Inter_400Regular",
+    marginTop: 2,
+  },
+  totalAmount: {
+    fontSize: 18,
+    fontFamily: "Inter_700Bold",
   },
   timeRow: {
     flexDirection: "row",

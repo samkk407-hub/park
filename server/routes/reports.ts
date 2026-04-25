@@ -4,12 +4,19 @@ import { ActivityLog } from "../models/ActivityLog";
 import { Parking } from "../models/Parking";
 import { User } from "../models/User";
 import { authMiddleware } from "../lib/auth";
+import { getAuth, requireOwnerRole, requireParkingAccess } from "../lib/access";
 
 const router = Router();
 
+function baseAmountExpr() {
+  return { $ifNull: ["$baseAmount", { $subtract: ["$amount", { $ifNull: ["$overstayAmount", 0] }] }] };
+}
+
 router.get("/summary", authMiddleware, async (req: Request, res: Response) => {
   const { parkingId, from, to } = req.query as any;
-  if (!parkingId) return res.status(400).json({ error: "parkingId required" });
+  if (!requireOwnerRole(req, res)) return;
+  const parking = await requireParkingAccess(req, res, parkingId);
+  if (!parking) return;
 
   const matchFilter: any = { parkingId };
   if (from || to) {
@@ -42,6 +49,9 @@ router.get("/summary", authMiddleware, async (req: Request, res: Response) => {
 
 router.get("/daily", authMiddleware, async (req: Request, res: Response) => {
   const { parkingId, days = 7 } = req.query as any;
+  if (!requireOwnerRole(req, res)) return;
+  const parking = await requireParkingAccess(req, res, parkingId);
+  if (!parking) return;
   const from = new Date();
   from.setDate(from.getDate() - Number(days));
 
@@ -61,13 +71,18 @@ router.get("/daily", authMiddleware, async (req: Request, res: Response) => {
 
 router.get("/activity", authMiddleware, async (req: Request, res: Response) => {
   const { parkingId, limit = 20 } = req.query as any;
+  if (!requireOwnerRole(req, res)) return;
+  const parking = await requireParkingAccess(req, res, parkingId);
+  if (!parking) return;
   const logs = await ActivityLog.find({ parkingId }).sort({ timestamp: -1 }).limit(Number(limit));
   return res.json({ logs });
 });
 
 router.get("/attendant-collections", authMiddleware, async (req: Request, res: Response) => {
   const { parkingId } = req.query as any;
-  if (!parkingId) return res.status(400).json({ error: "parkingId required" });
+  if (!requireOwnerRole(req, res)) return;
+  const parking = await requireParkingAccess(req, res, parkingId);
+  if (!parking) return;
 
   const [attendants, summaryAgg, ownerAgg] = await Promise.all([
     User.find({ parkingId, role: "attendant" }).sort({ createdAt: -1 }).lean(),
@@ -86,61 +101,125 @@ router.get("/attendant-collections", authMiddleware, async (req: Request, res: R
           },
           offlineCollected: {
             $sum: {
-              $cond: [
+              $add: [
                 {
-                  $and: [
-                    { $eq: ["$paymentStatus", "paid"] },
-                    { $eq: ["$paymentType", "offline"] },
-                    { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$paymentStatus", "paid"] },
+                        { $eq: ["$paymentType", "offline"] },
+                        { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    baseAmountExpr(),
+                    0,
                   ],
                 },
-                "$amount",
-                0,
+                {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$overstayPaymentType", "offline"] },
+                        { $eq: ["$overstayCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    { $ifNull: ["$overstayAmount", 0] },
+                    0,
+                  ],
+                },
               ],
             },
           },
           onlineCollected: {
             $sum: {
-              $cond: [
+              $add: [
                 {
-                  $and: [
-                    { $eq: ["$paymentStatus", "paid"] },
-                    { $eq: ["$paymentType", "online"] },
-                    { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$paymentStatus", "paid"] },
+                        { $eq: ["$paymentType", "online"] },
+                        { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    baseAmountExpr(),
+                    0,
                   ],
                 },
-                "$amount",
-                0,
+                {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$overstayPaymentType", "online"] },
+                        { $eq: ["$overstayCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    { $ifNull: ["$overstayAmount", 0] },
+                    0,
+                  ],
+                },
               ],
             },
           },
           unsettledAmount: {
             $sum: {
-              $cond: [
+              $add: [
                 {
-                  $and: [
-                    { $eq: ["$paymentStatus", "paid"] },
-                    { $eq: ["$settlementStatus", "unsettled"] },
-                    { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$paymentStatus", "paid"] },
+                        { $eq: ["$settlementStatus", "unsettled"] },
+                        { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    baseAmountExpr(),
+                    0,
                   ],
                 },
-                "$amount",
-                0,
+                {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$overstaySettlementStatus", "unsettled"] },
+                        { $eq: ["$overstayCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    { $ifNull: ["$overstayAmount", 0] },
+                    0,
+                  ],
+                },
               ],
             },
           },
           settledAmount: {
             $sum: {
-              $cond: [
+              $add: [
                 {
-                  $and: [
-                    { $eq: ["$paymentStatus", "paid"] },
-                    { $eq: ["$settlementStatus", "settled"] },
-                    { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$paymentStatus", "paid"] },
+                        { $eq: ["$settlementStatus", "settled"] },
+                        { $eq: ["$paymentCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    baseAmountExpr(),
+                    0,
                   ],
                 },
-                "$amount",
-                0,
+                {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$overstaySettlementStatus", "settled"] },
+                        { $eq: ["$overstayCollectedByUserId", "$attendantId"] },
+                      ],
+                    },
+                    { $ifNull: ["$overstayAmount", 0] },
+                    0,
+                  ],
+                },
               ],
             },
           },
@@ -154,35 +233,70 @@ router.get("/attendant-collections", authMiddleware, async (req: Request, res: R
           _id: null,
           ownerOnlineCollected: {
             $sum: {
-              $cond: [
+              $add: [
                 {
-                  $and: [
-                    { $eq: ["$paymentType", "online"] },
-                    { $eq: ["$paymentCollectedByRole", "owner"] },
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$paymentType", "online"] },
+                        { $eq: ["$paymentCollectedByRole", "owner"] },
+                      ],
+                    },
+                    baseAmountExpr(),
+                    0,
                   ],
                 },
-                "$amount",
-                0,
+                {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$overstayPaymentType", "online"] },
+                        { $eq: ["$overstayCollectedByRole", "owner"] },
+                      ],
+                    },
+                    { $ifNull: ["$overstayAmount", 0] },
+                    0,
+                  ],
+                },
               ],
             },
           },
           ownerOfflineCollected: {
             $sum: {
-              $cond: [
+              $add: [
                 {
-                  $and: [
-                    { $eq: ["$paymentType", "offline"] },
-                    { $eq: ["$paymentCollectedByRole", "owner"] },
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$paymentType", "offline"] },
+                        { $eq: ["$paymentCollectedByRole", "owner"] },
+                      ],
+                    },
+                    baseAmountExpr(),
+                    0,
                   ],
                 },
-                "$amount",
-                0,
+                {
+                  $cond: [
+                    {
+                      $and: [
+                        { $eq: ["$overstayPaymentType", "offline"] },
+                        { $eq: ["$overstayCollectedByRole", "owner"] },
+                      ],
+                    },
+                    { $ifNull: ["$overstayAmount", 0] },
+                    0,
+                  ],
+                },
               ],
             },
           },
           attendantUnsettled: {
             $sum: {
-              $cond: [{ $eq: ["$settlementStatus", "unsettled"] }, "$amount", 0],
+              $add: [
+                { $cond: [{ $eq: ["$settlementStatus", "unsettled"] }, baseAmountExpr(), 0] },
+                { $cond: [{ $eq: ["$overstaySettlementStatus", "unsettled"] }, { $ifNull: ["$overstayAmount", 0] }, 0] },
+              ],
             },
           },
         },
@@ -217,52 +331,91 @@ router.get("/attendant-collections", authMiddleware, async (req: Request, res: R
 });
 
 router.post("/attendant-collections/:attendantId/settle", authMiddleware, async (req: Request, res: Response) => {
-  const userId = (req as any).userId as string;
-  const userRole = (req as any).userRole as string;
+  const { userId, userRole } = getAuth(req);
+  if (!userId || !userRole) return res.status(401).json({ error: "Unauthorized" });
   const { parkingId } = req.body as { parkingId: string };
 
-  if (!parkingId) return res.status(400).json({ error: "parkingId required" });
-  if (!["owner", "superadmin"].includes(userRole)) {
-    return res.status(403).json({ error: "Only owner can settle attendant collections" });
-  }
+  if (!requireOwnerRole(req, res)) return;
 
   const [owner, parking] = await Promise.all([
     User.findById(userId),
-    Parking.findById(parkingId),
+    requireParkingAccess(req, res, parkingId),
   ]);
 
   if (!owner) return res.status(401).json({ error: "Unauthorized" });
-  if (!parking) return res.status(404).json({ error: "Parking not found" });
-  if (userRole !== "superadmin" && parking.ownerId !== userId) {
-    return res.status(403).json({ error: "Unauthorized parking access" });
-  }
+  if (!parking) return;
 
   const pendingEntries = await VehicleEntry.find({
     parkingId,
-    paymentCollectedByUserId: req.params["attendantId"],
-    paymentStatus: "paid",
-    paymentType: "offline",
-    settlementStatus: "unsettled",
+    $or: [
+      {
+        paymentCollectedByUserId: req.params["attendantId"],
+        paymentStatus: "paid",
+        paymentType: "offline",
+        settlementStatus: "unsettled",
+      },
+      {
+        overstayCollectedByUserId: req.params["attendantId"],
+        overstayPaymentType: "offline",
+        overstaySettlementStatus: "unsettled",
+      },
+    ],
   });
 
-  const settledAmount = pendingEntries.reduce((sum, entry) => sum + entry.amount, 0);
+  const baseEntryIds = pendingEntries
+    .filter((entry) =>
+      entry.paymentCollectedByUserId === req.params["attendantId"] &&
+      entry.paymentStatus === "paid" &&
+      entry.paymentType === "offline" &&
+      entry.settlementStatus === "unsettled"
+    )
+    .map((entry) => entry._id);
+  const overstayEntryIds = pendingEntries
+    .filter((entry) =>
+      entry.overstayCollectedByUserId === req.params["attendantId"] &&
+      entry.overstayPaymentType === "offline" &&
+      entry.overstaySettlementStatus === "unsettled"
+    )
+    .map((entry) => entry._id);
+  const settledAmount = pendingEntries.reduce((sum, entry) => {
+    const baseAmount = entry.baseAmount || Math.max(entry.amount - (entry.overstayAmount || 0), 0);
+    const baseUnsettled = entry.paymentCollectedByUserId === req.params["attendantId"] &&
+      entry.paymentStatus === "paid" &&
+      entry.paymentType === "offline" &&
+      entry.settlementStatus === "unsettled";
+    const overstayUnsettled = entry.overstayCollectedByUserId === req.params["attendantId"] &&
+      entry.overstayPaymentType === "offline" &&
+      entry.overstaySettlementStatus === "unsettled";
+    return sum + (baseUnsettled ? baseAmount : 0) + (overstayUnsettled ? entry.overstayAmount || 0 : 0);
+  }, 0);
   if (pendingEntries.length === 0) {
     return res.json({ success: true, settledCount: 0, settledAmount: 0 });
   }
 
-  await VehicleEntry.updateMany(
-    {
-      _id: { $in: pendingEntries.map((entry) => entry._id) },
-    },
-    {
-      $set: {
-        settlementStatus: "settled",
-        settledAt: new Date(),
-        settledByUserId: userId,
-        settledByName: owner.name,
+  await Promise.all([
+    VehicleEntry.updateMany(
+      { _id: { $in: baseEntryIds } },
+      {
+        $set: {
+          settlementStatus: "settled",
+          settledAt: new Date(),
+          settledByUserId: userId,
+          settledByName: owner.name,
+        },
       },
-    }
-  );
+    ),
+    VehicleEntry.updateMany(
+      { _id: { $in: overstayEntryIds } },
+      {
+        $set: {
+          overstaySettlementStatus: "settled",
+          overstaySettledAt: new Date(),
+          overstaySettledByUserId: userId,
+          overstaySettledByName: owner.name,
+        },
+      },
+    ),
+  ]);
 
   await ActivityLog.create({
     parkingId,

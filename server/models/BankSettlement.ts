@@ -7,9 +7,16 @@ export interface IBankSettlement extends Document {
   amount: number;
   transactionCount: number;
   entryIds: string[];
-  status: "pending" | "completed";
+  baseEntryIds: string[];
+  overstayEntryIds: string[];
+  status: "pending" | "completed" | "rejected";
+  reviewedByUserId?: string;
+  reviewedByName?: string;
+  transferUtr?: string;
+  rejectionReason?: string;
   createdAt: Date;
   completedAt?: Date;
+  reviewedAt?: Date;
 }
 
 const BankSettlementSchema = new Schema<IBankSettlement>({
@@ -19,9 +26,16 @@ const BankSettlementSchema = new Schema<IBankSettlement>({
   amount: { type: Number, required: true },
   transactionCount: { type: Number, required: true },
   entryIds: { type: [String], default: [] },
-  status: { type: String, enum: ["pending", "completed"], default: "pending" },
+  baseEntryIds: { type: [String], default: [] },
+  overstayEntryIds: { type: [String], default: [] },
+  status: { type: String, enum: ["pending", "completed", "rejected"], default: "pending", index: true },
+  reviewedByUserId: { type: String },
+  reviewedByName: { type: String },
+  transferUtr: { type: String },
+  rejectionReason: { type: String },
   createdAt: { type: Date, default: Date.now },
   completedAt: { type: Date },
+  reviewedAt: { type: Date },
 });
 
 export const BankSettlement = mongoose.model<IBankSettlement>(

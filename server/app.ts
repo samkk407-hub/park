@@ -4,8 +4,10 @@ import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { connectMongo } from "./lib/mongoose";
+import { getJwtSecret } from "./lib/config";
 
 const app: Express = express();
+getJwtSecret();
 
 connectMongo().catch((err) => {
   logger.error({ err }, "Failed to connect to MongoDB");
@@ -31,7 +33,24 @@ app.use(
     },
   }),
 );
-app.use(cors({ origin: "*", credentials: true }));
+const allowedOrigins = (process.env["CORS_ORIGIN"] || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const defaultDevOrigins = [
+  "http://localhost:5173",
+  "http://localhost:8081",
+  "http://localhost:19006",
+  "http://localhost:3000",
+];
+
+app.use(cors({
+  origin: allowedOrigins.length > 0
+    ? allowedOrigins
+    : process.env["NODE_ENV"] === "production"
+      ? false
+      : defaultDevOrigins,
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

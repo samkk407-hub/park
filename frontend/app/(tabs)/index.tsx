@@ -26,8 +26,18 @@ export default function DashboardScreen() {
     const todayEntries = entries.filter(e => new Date(e.entryTime).toDateString() === today);
     const inside = entries.filter(e => e.status === "inside");
     const todayExited = todayEntries.filter(e => e.status === "exited");
-    const onlineIncome = todayEntries.filter(e => e.paymentType === "online" && e.paymentStatus === "paid").reduce((s, e) => s + e.amount, 0);
-    const offlineIncome = todayEntries.filter(e => e.paymentType === "offline" && e.paymentStatus === "paid").reduce((s, e) => s + e.amount, 0);
+    const baseAmount = (entry: (typeof entries)[number]) =>
+      entry.baseAmount ?? Math.max(entry.amount - (entry.overstayAmount || 0), 0);
+    const onlineIncome = todayEntries.reduce((sum, entry) => {
+      const base = entry.paymentType === "online" && entry.paymentStatus === "paid" ? baseAmount(entry) : 0;
+      const overstay = entry.overstayPaymentType === "online" ? entry.overstayAmount || 0 : 0;
+      return sum + base + overstay;
+    }, 0);
+    const offlineIncome = todayEntries.reduce((sum, entry) => {
+      const base = entry.paymentType === "offline" && entry.paymentStatus === "paid" ? baseAmount(entry) : 0;
+      const overstay = entry.overstayPaymentType === "offline" ? entry.overstayAmount || 0 : 0;
+      return sum + base + overstay;
+    }, 0);
     const pending = entries.filter(e => e.paymentStatus === "pending").length;
     return {
       inside: inside.length,
@@ -39,25 +49,37 @@ export default function DashboardScreen() {
       pending,
       myCollectedCash: user
         ? entries
-            .filter(
-              (e) =>
-                e.paymentStatus === "paid" &&
-                e.paymentType === "offline" &&
-                e.paymentCollectedByUserId === user.id &&
-                e.settlementStatus === "unsettled"
-            )
-            .reduce((s, e) => s + e.amount, 0)
+            .reduce((sum, entry) => {
+              const base = entry.paymentStatus === "paid" &&
+                entry.paymentType === "offline" &&
+                entry.paymentCollectedByUserId === user.id &&
+                entry.settlementStatus === "unsettled"
+                ? baseAmount(entry)
+                : 0;
+              const overstay = entry.overstayPaymentType === "offline" &&
+                entry.overstayCollectedByUserId === user.id &&
+                entry.overstaySettlementStatus === "unsettled"
+                ? entry.overstayAmount || 0
+                : 0;
+              return sum + base + overstay;
+            }, 0)
         : 0,
       ownerWalletBalance: user?.role === "owner" || user?.role === "superadmin"
         ? entries
-            .filter(
-              (e) =>
-                e.paymentStatus === "paid" &&
-                e.paymentType === "online" &&
-                e.paymentCollectedByRole === "owner" &&
-                e.onlineSettlementStatus === "unsettled"
-            )
-            .reduce((s, e) => s + e.amount, 0)
+            .reduce((sum, entry) => {
+              const base = entry.paymentStatus === "paid" &&
+                entry.paymentType === "online" &&
+                entry.paymentCollectedByRole === "owner" &&
+                entry.onlineSettlementStatus === "unsettled"
+                ? baseAmount(entry)
+                : 0;
+              const overstay = entry.overstayPaymentType === "online" &&
+                entry.overstayCollectedByRole === "owner" &&
+                entry.overstayOnlineSettlementStatus === "unsettled"
+                ? entry.overstayAmount || 0
+                : 0;
+              return sum + base + overstay;
+            }, 0)
         : 0,
       occupancyPct: parking ? Math.min((inside.length / parking.totalCapacity) * 100, 100) : 0,
     };
@@ -88,7 +110,7 @@ export default function DashboardScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.background }}
-      contentContainerStyle={{ paddingTop: topPad, paddingBottom: botPad, gap: 16, paddingHorizontal: 16 }}
+      contentContainerStyle={{ paddingTop: topPad, paddingBottom: botPad, gap: 10, paddingHorizontal: 14 }}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary} />}
       showsVerticalScrollIndicator={false}
     >
@@ -105,6 +127,26 @@ export default function DashboardScreen() {
           onPress={() => router.push("/logs")}
         >
           <Feather name="bell" size={20} color={colors.foreground} />
+        </TouchableOpacity>
+      </View>
+
+      {/* Quick Actions */}
+      <View style={styles.actionsRow}>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: colors.success }]}
+          onPress={() => router.push("/entry")}
+          activeOpacity={0.85}
+        >
+          <Feather name="plus-circle" size={18} color="#fff" />
+          <Text style={styles.actionBtnText}>New Entry</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.actionBtn, { backgroundColor: colors.destructive }]}
+          onPress={() => router.push("/exit")}
+          activeOpacity={0.85}
+        >
+          <Feather name="log-out" size={18} color="#fff" />
+          <Text style={styles.actionBtnText}>Exit</Text>
         </TouchableOpacity>
       </View>
 
@@ -176,7 +218,7 @@ export default function DashboardScreen() {
 
       {/* Income */}
       <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.cardTitle, { color: colors.foreground }]}>Today's Income</Text>
+        <Text style={[styles.cardTitle, { color: colors.foreground }]}>{"Today's Income"}</Text>
         <View style={styles.incomeRow}>
           <View style={[styles.incomeItem, { backgroundColor: colors.accent, borderRadius: 10 }]}>
             <Feather name="wifi" size={14} color={colors.primary} />
@@ -194,26 +236,6 @@ export default function DashboardScreen() {
             <Text style={[styles.incomeAmount, { color: colors.foreground }]}>₹{stats.totalIncome}</Text>
           </View>
         </View>
-      </View>
-
-      {/* Quick Actions */}
-      <View style={styles.actionsRow}>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-          onPress={() => router.push("/entry")}
-          activeOpacity={0.85}
-        >
-          <Feather name="plus-circle" size={20} color="#fff" />
-          <Text style={styles.actionBtnText}>New Entry</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.actionBtn, { backgroundColor: colors.success }]}
-          onPress={() => router.push("/exit")}
-          activeOpacity={0.85}
-        >
-          <Feather name="log-out" size={20} color="#fff" />
-          <Text style={styles.actionBtnText}>Exit Vehicle</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Recent Inside */}
@@ -252,10 +274,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   greeting: {
-    fontSize: 13,
+    fontSize: 12,
   },
   parkingName: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
   },
   notifBtn: {
@@ -268,33 +290,33 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     borderWidth: 1,
   },
   cardTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
-    marginBottom: 12,
+    marginBottom: 8,
   },
   gridRow: {
     flexDirection: "row",
-    gap: 12,
+    gap: 8,
   },
   incomeRow: {
     flexDirection: "row",
-    gap: 8,
+    gap: 6,
   },
   incomeItem: {
     flex: 1,
-    padding: 12,
+    padding: 8,
     alignItems: "center",
-    gap: 4,
+    gap: 2,
   },
   incomeLabel: {
-    fontSize: 12,
+    fontSize: 11,
   },
   incomeAmount: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
   },
   actionsRow: {
@@ -306,14 +328,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
     borderRadius: 12,
-    gap: 8,
+    gap: 7,
   },
   actionBtnText: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
   },
   sectionRow: {

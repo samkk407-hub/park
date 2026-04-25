@@ -20,7 +20,7 @@ export function StatsCard({ label, value, icon, color, bgColor, subtitle }: Stat
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <View style={[styles.iconBox, { backgroundColor: iconBg }]}>
-        <Feather name={icon} size={20} color={iconColor} />
+        <Feather name={icon} size={17} color={iconColor} />
       </View>
       <Text style={[styles.value, { color: colors.foreground }]}>{value}</Text>
       <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
@@ -35,31 +35,31 @@ const styles = StyleSheet.create({
   card: {
     flex: 1,
     borderRadius: 12,
-    padding: 14,
+    padding: 10,
     borderWidth: 1,
     alignItems: "flex-start",
-    gap: 4,
+    gap: 2,
     minWidth: 140,
   },
   iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 2,
   },
   value: {
-    fontSize: 22,
+    fontSize: 19,
     fontFamily: "Inter_700Bold",
-    lineHeight: 28,
+    lineHeight: 24,
   },
   label: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: "Inter_400Regular",
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: "Inter_500Medium",
     marginTop: 2,
   },

@@ -59,6 +59,7 @@ function RootLayoutNav() {
       <Stack.Screen name="logs" options={{ presentation: "modal" }} />
       <Stack.Screen name="settings" options={{ presentation: "modal" }} />
       <Stack.Screen name="banking" options={{ presentation: "modal" }} />
+      <Stack.Screen name="plans" options={{ presentation: "modal" }} />
     </Stack>
   );
 }

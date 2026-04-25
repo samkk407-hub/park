@@ -40,9 +40,19 @@ export default function ReportsScreen() {
   }, [entries, range]);
 
   const stats = useMemo(() => {
+    const baseAmount = (entry: (typeof filtered)[number]) =>
+      entry.baseAmount ?? Math.max(entry.amount - (entry.overstayAmount || 0), 0);
     const totalIncome = filtered.filter(e => e.paymentStatus === "paid").reduce((s, e) => s + e.amount, 0);
-    const onlineIncome = filtered.filter(e => e.paymentType === "online" && e.paymentStatus === "paid").reduce((s, e) => s + e.amount, 0);
-    const offlineIncome = filtered.filter(e => e.paymentType === "offline" && e.paymentStatus === "paid").reduce((s, e) => s + e.amount, 0);
+    const onlineIncome = filtered.reduce((sum, entry) => {
+      const base = entry.paymentType === "online" && entry.paymentStatus === "paid" ? baseAmount(entry) : 0;
+      const overstay = entry.overstayPaymentType === "online" ? entry.overstayAmount || 0 : 0;
+      return sum + base + overstay;
+    }, 0);
+    const offlineIncome = filtered.reduce((sum, entry) => {
+      const base = entry.paymentType === "offline" && entry.paymentStatus === "paid" ? baseAmount(entry) : 0;
+      const overstay = entry.overstayPaymentType === "offline" ? entry.overstayAmount || 0 : 0;
+      return sum + base + overstay;
+    }, 0);
     const pending = filtered.filter(e => e.paymentStatus === "pending").reduce((s, e) => s + e.amount, 0);
     const bikes = filtered.filter(e => e.vehicleType === "bike").length;
     const cars = filtered.filter(e => e.vehicleType === "car").length;

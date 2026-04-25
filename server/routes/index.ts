@@ -7,6 +7,7 @@ import staffRouter from "./staff";
 import reportsRouter from "./reports";
 import adminRouter from "./admin";
 import bankingRouter from "./banking";
+import subscriptionsRouter from "./subscriptions";
 
 const router: IRouter = Router();
 
@@ -17,6 +18,7 @@ router.use("/entries", entriesRouter);
 router.use("/staff", staffRouter);
 router.use("/reports", reportsRouter);
 router.use("/banking", bankingRouter);
+router.use("/subscriptions", subscriptionsRouter);
 router.use("/admin", adminRouter);
 
 

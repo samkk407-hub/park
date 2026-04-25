@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
   Alert, FlatList, KeyboardAvoidingView, Modal,
@@ -113,7 +112,6 @@ export default function StaffScreen() {
         );
         setOwnerSummary(response.ownerSummary);
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setModalVisible(false);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Failed to save");
@@ -138,7 +136,6 @@ export default function StaffScreen() {
           onPress: async () => {
             try {
               await deleteStaff(s.id);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             } catch (e: any) {
               Alert.alert("Error", e.message || "Failed to remove");
             }
@@ -179,7 +176,6 @@ export default function StaffScreen() {
                 )
               );
               setOwnerSummary(response.ownerSummary);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               Alert.alert("Collected", `Rs ${result.settledAmount} marked as collected by owner.`);
             } catch (e: any) {
               Alert.alert("Error", e.message || "Failed to settle cash");

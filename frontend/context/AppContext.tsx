@@ -41,12 +41,16 @@ export type EntryStatus = "inside" | "exited";
 export interface VehicleEntry {
   id: string;
   ticketId: string;
+  publicToken?: string;
+  ticketUrl?: string;
   parkingId: string;
   vehicleType: VehicleType;
   numberPlate: string;
   customerMobile: string;
   entryTime: string;
   exitTime?: string;
+  plannedDurationDays?: number;
+  validUntil?: string;
   paymentType: PaymentType;
   paymentStatus: PaymentStatus;
   paymentCollectedByUserId?: string;
@@ -60,6 +64,20 @@ export interface VehicleEntry {
   settledAt?: string;
   settledByUserId?: string;
   settledByName?: string;
+  baseAmount?: number;
+  overstayAmount?: number;
+  overstayPaymentType?: PaymentType;
+  overstayCollectedByUserId?: string;
+  overstayCollectedByName?: string;
+  overstayCollectedByRole?: "owner" | "attendant" | "superadmin";
+  overstayCollectedAt?: string;
+  overstayOnlineSettlementStatus?: "not_applicable" | "unsettled" | "pending" | "settled";
+  overstayOnlineSettledAt?: string;
+  overstayOnlineSettlementId?: string;
+  overstaySettlementStatus?: "not_applicable" | "unsettled" | "settled";
+  overstaySettledAt?: string;
+  overstaySettledByUserId?: string;
+  overstaySettledByName?: string;
   amount: number;
   status: EntryStatus;
   attendantId: string;
@@ -101,7 +119,7 @@ interface AppContextType {
   logout: () => Promise<void>;
   setupParking: (parking: Omit<ParkingProfile, "id" | "ownerId">) => Promise<void>;
   addEntry: (entry: any) => Promise<VehicleEntry>;
-  exitVehicle: (entryId: string, _exitTime?: string) => Promise<void>;
+  exitVehicle: (entryId: string, _exitTime?: string, extraPaymentType?: PaymentType) => Promise<void>;
   updatePaymentStatus: (entryId: string, status: PaymentStatus, paymentType?: PaymentType) => Promise<void>;
   addStaff: (staff: Omit<Staff, "id" | "parkingId" | "createdAt">) => Promise<void>;
   updateStaff: (id: string, updates: Partial<Staff>) => Promise<void>;
@@ -126,12 +144,16 @@ function mapEntry(e: any): VehicleEntry {
   return {
     id: e._id || e.id,
     ticketId: e.ticketId,
+    publicToken: e.publicToken,
+    ticketUrl: e.ticketUrl,
     parkingId: e.parkingId,
     vehicleType: e.vehicleType,
     numberPlate: e.numberPlate,
     customerMobile: e.customerMobile || "",
     entryTime: e.entryTime,
     exitTime: e.exitTime,
+    plannedDurationDays: e.plannedDurationDays,
+    validUntil: e.validUntil,
     paymentType: e.paymentType,
     paymentStatus: e.paymentStatus,
     paymentCollectedByUserId: e.paymentCollectedByUserId,
@@ -145,6 +167,20 @@ function mapEntry(e: any): VehicleEntry {
     settledAt: e.settledAt,
     settledByUserId: e.settledByUserId,
     settledByName: e.settledByName,
+    baseAmount: e.baseAmount,
+    overstayAmount: e.overstayAmount,
+    overstayPaymentType: e.overstayPaymentType,
+    overstayCollectedByUserId: e.overstayCollectedByUserId,
+    overstayCollectedByName: e.overstayCollectedByName,
+    overstayCollectedByRole: e.overstayCollectedByRole,
+    overstayCollectedAt: e.overstayCollectedAt,
+    overstayOnlineSettlementStatus: e.overstayOnlineSettlementStatus,
+    overstayOnlineSettledAt: e.overstayOnlineSettledAt,
+    overstayOnlineSettlementId: e.overstayOnlineSettlementId,
+    overstaySettlementStatus: e.overstaySettlementStatus,
+    overstaySettledAt: e.overstaySettledAt,
+    overstaySettledByUserId: e.overstaySettledByUserId,
+    overstaySettledByName: e.overstaySettledByName,
     amount: e.amount,
     status: e.status,
     attendantId: e.attendantId,
@@ -293,7 +329,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const { parking: p } = response;
     const mapped = mapParking(p);
     setParking(mapped);
-    const updatedUser = { ...user, parkingId: mapped.id };
+    const updatedUser = {
+      ...user,
+      name: mapped.ownerName || user.name,
+      parkingId: mapped.id,
+    };
     setUser(updatedUser);
     await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
   }, [token, user, parking]);
@@ -306,9 +346,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return mapped;
   }, [token, parking]);
 
-  const exitVehicle = useCallback(async (entryId: string, _exitTime?: string) => {
+  const exitVehicle = useCallback(async (entryId: string, _exitTime?: string, extraPaymentType?: PaymentType) => {
     if (!token) throw new Error("Not authenticated");
-    const { entry } = await api.exitVehicle(entryId, token);
+    const { entry } = await api.exitVehicle(entryId, token, extraPaymentType);
     const mapped = mapEntry(entry);
     setEntries(prev => prev.map(e => e.id === entryId ? mapped : e));
   }, [token]);

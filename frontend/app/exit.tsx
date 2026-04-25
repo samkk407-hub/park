@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useMemo, useState } from "react";
 import {
@@ -8,7 +7,7 @@ import {
   StyleSheet, Text, TextInput, TouchableOpacity, View
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useApp, VehicleEntry } from "@/context/AppContext";
+import { PaymentType, useApp, VehicleEntry } from "@/context/AppContext";
 import { useColors } from "@/hooks/useColors";
 import { PrimaryButton } from "@/components/PrimaryButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -16,12 +15,13 @@ import { ScreenHeader } from "@/components/ScreenHeader";
 export default function ExitScreen() {
   const colors = useColors();
   const router = useRouter();
-  const { entries, parking, exitVehicle, updatePaymentStatus, refreshSession } = useApp();
+  const { entries, parking, exitVehicle, refreshSession } = useApp();
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === "web";
 
   const [search, setSearch] = useState("");
   const [selectedEntry, setSelectedEntry] = useState<VehicleEntry | null>(null);
+  const [extraPaymentType, setExtraPaymentType] = useState<PaymentType>("offline");
   const [loading, setLoading] = useState(false);
 
   useFocusEffect(
@@ -47,7 +47,6 @@ export default function ExitScreen() {
 
   const handleSelect = (entry: VehicleEntry) => {
     setSelectedEntry(entry);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
 
   const getDurationMinutes = (entry: VehicleEntry) => {
@@ -56,23 +55,32 @@ export default function ExitScreen() {
     return Math.ceil((nowMs - entryMs) / (1000 * 60));
   };
 
+  const getUsedDays = (entry: VehicleEntry) =>
+    Math.max(1, Math.ceil(getDurationMinutes(entry) / (60 * 24)));
+
   const calculateFinalAmount = (entry: VehicleEntry) => {
     if (!parking) return entry.amount;
-    const minutes = getDurationMinutes(entry);
-    const hours = Math.max(1, Math.ceil(minutes / 60));
     const rate = entry.vehicleType === "bike" ? parking.bikeRate
       : entry.vehicleType === "car" ? parking.carRate
       : parking.otherRate;
-    return hours * rate;
+    return Math.max(entry.amount, getUsedDays(entry) * rate);
+  };
+
+  const calculateExtraAmount = (entry: VehicleEntry) => {
+    return Math.max(0, calculateFinalAmount(entry) - entry.amount);
   };
 
   const handleExit = async () => {
     if (!selectedEntry) return;
     const finalAmount = calculateFinalAmount(selectedEntry);
+    const extraAmount = calculateExtraAmount(selectedEntry);
+    const extraLine = extraAmount > 0
+      ? `\nExtra Due: Rs ${extraAmount}\nCollect by: ${extraPaymentType === "online" ? "Online / UPI" : "Cash / Offline"}`
+      : "";
 
     Alert.alert(
       "Confirm Exit",
-      `Vehicle: ${selectedEntry.numberPlate}\nDuration: ${formatDuration(getDurationMinutes(selectedEntry))}\nFinal Amount: ₹${finalAmount}\n\nProceed?`,
+      `Vehicle: ${selectedEntry.numberPlate}\nUsed: ${getUsedDays(selectedEntry)} day(s)\nFinal Amount: Rs ${finalAmount}${extraLine}\n\nProceed?`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -80,18 +88,19 @@ export default function ExitScreen() {
           onPress: async () => {
             setLoading(true);
             try {
-              await exitVehicle(selectedEntry.id, new Date().toISOString());
-              if (finalAmount !== selectedEntry.amount) {
-              }
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              await exitVehicle(
+                selectedEntry.id,
+                new Date().toISOString(),
+                extraAmount > 0 ? extraPaymentType : undefined,
+              );
               Alert.alert(
                 "Exit Successful",
-                `${selectedEntry.numberPlate} has been checked out.\nTotal: ₹${finalAmount}`,
+                `${selectedEntry.numberPlate} has been checked out.\nTotal: Rs ${finalAmount}${extraAmount > 0 ? `\nExtra collected: Rs ${extraAmount}` : ""}`,
                 [{ text: "Done", onPress: () => router.push("/") }]
               );
               setSelectedEntry(null);
               setSearch("");
-            } catch (e) {
+            } catch {
               Alert.alert("Error", "Failed to process exit");
             } finally {
               setLoading(false);
@@ -141,10 +150,46 @@ export default function ExitScreen() {
             <View style={styles.selectedDetails}>
               <DetailRow label="Ticket" value={selectedEntry.ticketId} colors={colors} />
               <DetailRow label="Entry Time" value={new Date(selectedEntry.entryTime).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })} colors={colors} />
+              {selectedEntry.validUntil ? (
+                <DetailRow label="Valid Till" value={new Date(selectedEntry.validUntil).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })} colors={colors} />
+              ) : null}
               <DetailRow label="Duration" value={formatDuration(getDurationMinutes(selectedEntry))} colors={colors} />
-              <DetailRow label="Final Amount" value={`₹${calculateFinalAmount(selectedEntry)}`} colors={colors} highlight />
+              <DetailRow label="Used Days" value={`${getUsedDays(selectedEntry)} day(s)`} colors={colors} />
+              <DetailRow label="Paid Amount" value={`Rs ${selectedEntry.amount}`} colors={colors} />
+              <DetailRow label="Final Amount" value={`Rs ${calculateFinalAmount(selectedEntry)}`} colors={colors} highlight />
+              {calculateExtraAmount(selectedEntry) > 0 ? (
+                <DetailRow label="Extra Due" value={`Rs ${calculateExtraAmount(selectedEntry)}`} colors={colors} highlight />
+              ) : null}
               <DetailRow label="Payment Status" value={selectedEntry.paymentStatus.toUpperCase()} colors={colors} />
             </View>
+            {calculateExtraAmount(selectedEntry) > 0 ? (
+              <View style={styles.payChoiceRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.payChoice,
+                    {
+                      backgroundColor: extraPaymentType === "offline" ? colors.primary : colors.muted,
+                      borderColor: extraPaymentType === "offline" ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setExtraPaymentType("offline")}
+                >
+                  <Text style={[styles.payChoiceText, { color: extraPaymentType === "offline" ? "#fff" : colors.foreground }]}>Cash</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.payChoice,
+                    {
+                      backgroundColor: extraPaymentType === "online" ? colors.primary : colors.muted,
+                      borderColor: extraPaymentType === "online" ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setExtraPaymentType("online")}
+                >
+                  <Text style={[styles.payChoiceText, { color: extraPaymentType === "online" ? "#fff" : colors.foreground }]}>Online</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <PrimaryButton label="Confirm Exit" onPress={handleExit} loading={loading} />
           </View>
         )}
@@ -178,11 +223,11 @@ export default function ExitScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.plate, { color: colors.foreground }]}>{item.numberPlate}</Text>
                   <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-                    {item.ticketId} · {formatDuration(getDurationMinutes(item))}
+                    {item.ticketId} - {getUsedDays(item)} day(s)
                   </Text>
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text style={[styles.amount, { color: colors.foreground }]}>₹{calculateFinalAmount(item)}</Text>
+                  <Text style={[styles.amount, { color: colors.foreground }]}>Rs {calculateFinalAmount(item)}</Text>
                   <View style={[styles.badge, { backgroundColor: item.paymentStatus === "paid" ? colors.successLight : colors.warningLight }]}>
                     <Text style={[styles.badgeText, { color: item.paymentStatus === "paid" ? colors.success : colors.warning }]}>
                       {item.paymentStatus === "paid" ? "PAID" : "PENDING"}
@@ -278,6 +323,21 @@ const styles = StyleSheet.create({
   },
   detailValue: {
     fontSize: 13,
+  },
+  payChoiceRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  payChoice: {
+    flex: 1,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  payChoiceText: {
+    fontSize: 13,
+    fontFamily: "Inter_700Bold",
   },
   entryItem: {
     flexDirection: "row",

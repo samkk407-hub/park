@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
@@ -36,7 +35,6 @@ export default function LoginScreen() {
     setOtp(["", "", "", "", "", ""]);
     setDevOtp(null);
     setStep("mobile");
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
   const handleSendOtp = async () => {
@@ -49,7 +47,6 @@ export default function LoginScreen() {
       const res = await api.sendOtp(mobile);
       if (res.devOtp) setDevOtp(res.devOtp);
       setStep("otp");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (res.devOtp) {
         Alert.alert("OTP Sent (Dev Mode)", `Your OTP is: ${res.devOtp}`);
       } else {
@@ -80,7 +77,6 @@ export default function LoginScreen() {
         parkingId: u.parkingId,
       };
       await loginWithToken(res.token, user, res.parking);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace("/");
     } catch (e: any) {
       Alert.alert("Login Failed", e.message || "OTP verification failed");
@@ -326,7 +322,7 @@ export default function LoginScreen() {
 
             <TouchableOpacity onPress={handleSendOtp} style={styles.resendRow}>
               <Text style={[styles.resendText, { color: colors.mutedForeground }]}>
-                Didn't receive OTP? <Text style={{ color: colors.primary }}>Resend</Text>
+                Did not receive OTP? <Text style={{ color: colors.primary }}>Resend</Text>
               </Text>
             </TouchableOpacity>
           </View>

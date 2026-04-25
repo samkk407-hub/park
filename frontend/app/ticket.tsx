@@ -1,12 +1,12 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import * as Haptics from "expo-haptics";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useMemo } from "react";
 import {
   Alert,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -35,7 +35,6 @@ export default function TicketScreen() {
 
   useEffect(() => {
     if (!entry) return;
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   }, [entry]);
 
   if (!entry || !parking) {
@@ -50,12 +49,27 @@ export default function TicketScreen() {
 
   const topPad = isWeb ? 67 : insets.top + 16;
   const botPad = isWeb ? 34 : insets.bottom + 20;
+  const ticketUrl = entry.ticketUrl || getTicketUrl(entry.publicToken);
+  const customerMessage = [
+    `Your parking ticket is ${entry.ticketId}.`,
+    `Parking: ${parking.name}`,
+    `Vehicle: ${entry.numberPlate}`,
+    `Entry: ${formatDateTime(entry.entryTime)}`,
+    entry.validUntil ? `Valid till: ${formatDateTime(entry.validUntil)}` : "",
+    `Amount: Rs ${entry.amount}`,
+    ticketUrl ? `Ticket link: ${ticketUrl}` : "",
+  ].filter(Boolean).join("\n");
 
-  const handleShare = () => {
-    Alert.alert(
-      "Share Ticket",
-      `WhatsApp/SMS sharing would be configured here.\n\nTicket ID: ${entry.ticketId}\nVehicle: ${entry.numberPlate}\nAmount: Rs ${entry.amount}`
-    );
+  const handleShare = async () => {
+    if (Platform.OS === "web") {
+      Alert.alert("Customer Ticket Message", customerMessage);
+      return;
+    }
+    try {
+      await Share.share({ message: customerMessage });
+    } catch {
+      Alert.alert("Customer Ticket Message", customerMessage);
+    }
   };
 
   return (
@@ -75,9 +89,12 @@ export default function TicketScreen() {
       </View>
 
       <View style={[styles.ticketCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <View style={[styles.ticketHeader, { backgroundColor: colors.primary }]}>
-          <Feather name="map-pin" size={20} color="#fff" />
+        <View style={[styles.ticketHeader, { backgroundColor: colors.success }]}>
+          <View style={styles.headerIcon}>
+            <Feather name="map-pin" size={20} color="#fff" />
+          </View>
           <View style={{ flex: 1 }}>
+            <Text style={styles.ticketEyebrow}>PARKING TICKET</Text>
             <Text style={styles.ticketParkingName}>{parking.name}</Text>
             <Text style={styles.ticketParkingLoc} numberOfLines={1}>{parking.location}</Text>
           </View>
@@ -91,20 +108,26 @@ export default function TicketScreen() {
         <View style={styles.ticketBody}>
           <View style={styles.ticketIdRow}>
             <Text style={[styles.ticketIdLabel, { color: colors.mutedForeground }]}>TICKET ID</Text>
-            <Text style={[styles.ticketId, { color: colors.primary }]}>{entry.ticketId}</Text>
+            <Text style={[styles.ticketId, { color: colors.success }]}>{entry.ticketId}</Text>
+            <Text style={[styles.ticketSubText, { color: colors.mutedForeground }]}>
+              Show this ticket number at exit
+            </Text>
           </View>
 
-          <View style={[styles.qrBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
-            <Feather name="grid" size={40} color={colors.mutedForeground} />
-            <Text style={[styles.qrLabel, { color: colors.mutedForeground }]}>{entry.ticketId}</Text>
+          <View style={[styles.vehiclePlate, { backgroundColor: colors.foreground }]}>
+            <Text style={[styles.vehiclePlateText, { color: colors.background }]}>{entry.numberPlate}</Text>
+            <Text style={[styles.vehicleType, { color: colors.background }]}>{entry.vehicleType.toUpperCase()}</Text>
           </View>
 
           <View style={styles.detailGrid}>
-            <DetailItem label="Vehicle" value={entry.vehicleType.toUpperCase()} colors={colors} />
-            <DetailItem label="Number Plate" value={entry.numberPlate} colors={colors} />
-            <DetailItem label="Entry Time" value={formatTime(entry.entryTime)} colors={colors} />
-            <DetailItem label="Entry Date" value={formatDate(entry.entryTime)} colors={colors} />
-            <DetailItem label="Rate" value={`Rs ${entry.amount}/hr`} colors={colors} />
+            <DetailItem label="Ticket Cut By" value={entry.attendantName} colors={colors} />
+            <DetailItem label="Entry Time" value={formatDateTime(entry.entryTime)} colors={colors} />
+            <DetailItem label="Paid Days" value={`${entry.plannedDurationDays || 1} day(s)`} colors={colors} />
+            {entry.validUntil ? (
+              <DetailItem label="Valid Till" value={formatDateTime(entry.validUntil)} colors={colors} />
+            ) : null}
+            <DetailItem label="Current Status" value={entry.status === "inside" ? "Vehicle Inside" : "Exited"} colors={colors} />
+            <DetailItem label="Amount Collected" value={`Rs ${entry.amount}`} colors={colors} />
             <DetailItem
               label="Payment"
               value={entry.paymentType === "online" ? "Online / UPI" : "Cash / Offline"}
@@ -135,18 +158,27 @@ export default function TicketScreen() {
 
           {entry.customerMobile ? (
             <Text style={[styles.mobile, { color: colors.mutedForeground }]}>
-              Customer: +91 {entry.customerMobile}
+              Customer SMS: +91 {entry.customerMobile}
             </Text>
           ) : null}
 
-          <Text style={[styles.mobile, { color: colors.mutedForeground }]}>
-            Attendant: {entry.attendantName}
+          {ticketUrl ? (
+            <View style={[styles.linkBox, { backgroundColor: colors.muted, borderColor: colors.border }]}>
+              <Feather name="link" size={14} color={colors.primary} />
+              <Text style={[styles.linkText, { color: colors.primary }]} numberOfLines={2}>
+                {ticketUrl}
+              </Text>
+            </View>
+          ) : null}
+
+          <Text style={[styles.terms, { color: colors.mutedForeground }]}>
+            This is your parking ticket for {parking.name}. Keep this ticket safe. Lost tickets or extra duration will be charged as per parking rules.
           </Text>
         </View>
       </View>
 
       <PrimaryButton
-        label="Share via WhatsApp"
+        label={entry.customerMobile ? "Share Ticket Message" : "Share Ticket"}
         onPress={handleShare}
         variant="outline"
         size="md"
@@ -179,6 +211,19 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  return `${formatDate(iso)}, ${d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })}`;
+}
+
+function getTicketUrl(publicToken?: string): string {
+  if (!publicToken) return "";
+  const domain = process.env.EXPO_PUBLIC_DOMAIN;
+  if (!domain) return "";
+  const base = domain.startsWith("http") ? domain : `http://${domain}`;
+  return `${base.replace(/\/$/, "")}/api/entries/public-ticket/${publicToken}`;
+}
+
 const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
@@ -209,14 +254,29 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   ticketHeader: {
-    padding: 16,
+    padding: 18,
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
+  },
+  headerIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ticketEyebrow: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 10,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1,
+    marginBottom: 3,
   },
   ticketParkingName: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 18,
     fontFamily: "Inter_700Bold",
   },
   ticketParkingLoc: {
@@ -244,7 +304,7 @@ const styles = StyleSheet.create({
   },
   ticketIdRow: {
     alignItems: "center",
-    gap: 4,
+    gap: 5,
   },
   ticketIdLabel: {
     fontSize: 10,
@@ -252,24 +312,35 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
   },
   ticketId: {
-    fontSize: 22,
+    fontSize: 26,
     fontFamily: "Inter_700Bold",
     letterSpacing: 2,
   },
-  qrBox: {
-    borderRadius: 12,
-    borderWidth: 1,
+  ticketSubText: {
+    fontSize: 12,
+    fontFamily: "Inter_400Regular",
+  },
+  vehiclePlate: {
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
     alignSelf: "center",
-    width: 120,
-    height: 120,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
+    minWidth: 190,
   },
-  qrLabel: {
-    fontSize: 11,
-    fontFamily: "Inter_400Regular",
+  vehiclePlateText: {
+    fontSize: 24,
+    fontFamily: "Inter_700Bold",
+    letterSpacing: 1,
     textAlign: "center",
+  },
+  vehicleType: {
+    fontSize: 11,
+    fontFamily: "Inter_600SemiBold",
+    letterSpacing: 1.2,
+    opacity: 0.72,
+    marginTop: 4,
   },
   detailGrid: {
     gap: 8,
@@ -301,6 +372,25 @@ const styles = StyleSheet.create({
   },
   mobile: {
     fontSize: 12,
+    fontFamily: "Inter_400Regular",
+    textAlign: "center",
+  },
+  linkBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+  },
+  linkText: {
+    flex: 1,
+    fontSize: 12,
+    fontFamily: "Inter_500Medium",
+  },
+  terms: {
+    fontSize: 12,
+    lineHeight: 18,
     fontFamily: "Inter_400Regular",
     textAlign: "center",
   },

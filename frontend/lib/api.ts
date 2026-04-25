@@ -9,8 +9,17 @@ async function req<T>(path: string, options: RequestInit = {}, token?: string | 
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   const res = await fetch(`${BASE}${path}`, { ...options, headers });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  const text = await res.text();
+  let json: any = null;
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      if (!res.ok) throw new Error(text.slice(0, 160) || `HTTP ${res.status}`);
+      throw new Error("Invalid JSON response from server");
+    }
+  }
+  if (!res.ok) throw new Error(json?.error || json?.message || `HTTP ${res.status}`);
   return json as T;
 }
 
@@ -45,8 +54,11 @@ export const api = {
   addEntry: (data: any, token: string) =>
     req<{ entry: any }>("/entries", { method: "POST", body: JSON.stringify(data) }, token),
 
-  exitVehicle: (id: string, token: string) =>
-    req<{ entry: any }>(`/entries/${id}/exit`, { method: "PUT" }, token),
+  exitVehicle: (id: string, token: string, extraPaymentType?: "online" | "offline") =>
+    req<{ entry: any }>(`/entries/${id}/exit`, {
+      method: "PUT",
+      body: JSON.stringify(extraPaymentType ? { extraPaymentType } : {}),
+    }, token),
 
   updatePayment: (id: string, paymentStatus: string, token: string, paymentType?: string) =>
     req<{ entry: any }>(`/entries/${id}/payment`, {
@@ -104,6 +116,23 @@ export const api = {
     req<{ success: boolean; amount: number; transactionCount: number; settlement: any }>(
       "/banking/settle-wallet",
       { method: "POST", body: JSON.stringify({ parkingId }) },
+      token
+    ),
+
+  getSubscriptionSummary: (parkingId: string, token: string) =>
+    req<{ subscription: any; plans: any[]; purchases: any[] }>(
+      `/subscriptions/summary?parkingId=${parkingId}`,
+      {},
+      token
+    ),
+
+  getSubscriptionPlans: (token: string) =>
+    req<{ plans: any[] }>("/subscriptions/plans", {}, token),
+
+  createPlanPurchase: (data: any, token: string) =>
+    req<{ purchase: any; order: any; keyId: string; checkoutUrl: string }>(
+      "/subscriptions/purchase",
+      { method: "POST", body: JSON.stringify(data) },
       token
     ),
 };

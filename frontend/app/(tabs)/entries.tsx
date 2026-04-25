@@ -54,7 +54,7 @@ export default function EntriesScreen() {
         <View style={styles.headerRow}>
           <Text style={[styles.title, { color: colors.foreground }]}>Vehicle Entries</Text>
           <TouchableOpacity
-            style={[styles.addBtn, { backgroundColor: colors.primary }]}
+            style={[styles.addBtn, { backgroundColor: colors.success }]}
             onPress={() => router.push("/entry")}
           >
             <Feather name="plus" size={20} color="#fff" />

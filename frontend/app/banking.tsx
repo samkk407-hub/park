@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import * as Haptics from "expo-haptics";
 import React, { useState } from "react";
 import {
   Alert,
@@ -95,7 +94,6 @@ export default function BankingScreen() {
         },
         token
       );
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Saved", "Bank account saved successfully.");
       await loadData();
     } catch (e: any) {
@@ -123,7 +121,6 @@ export default function BankingScreen() {
             try {
               setSettling(true);
               const result = await api.settleWalletToBank(parking.id, token);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               Alert.alert(
                 "Settlement Requested",
                 `Rs ${result.amount} moved to pending bank settlement. Wait 24 hours, amount will reach the bank account after admin approval.`
@@ -165,7 +162,7 @@ export default function BankingScreen() {
             <WalletItem label="Settled To Bank" value={`Rs ${walletSummary.settledToBank}`} color={colors.info} />
           </View>
           <Text style={[styles.helperText, { color: colors.mutedForeground }]}>
-            Owner settle karega to amount pending me chala jayega. Admin approval ke baad hi bank me success hoga.
+            When the owner settles the wallet, the amount moves to pending. It will be marked successful only after admin approval.
           </Text>
           <PrimaryButton label="Settle Wallet To Bank" onPress={handleSettle} loading={settling} />
         </View>
