@@ -198,12 +198,12 @@ export default function DashboardScreen() {
       {(user?.role === "owner" || user?.role === "superadmin") && (
         <View style={styles.gridRow}>
           <StatsCard
-            label="Wallet Balance"
+            label="Owner UPI Total"
             value={`Rs ${stats.ownerWalletBalance}`}
             icon="credit-card"
             color={stats.ownerWalletBalance > 0 ? colors.primary : colors.success}
             bgColor={stats.ownerWalletBalance > 0 ? colors.accent : colors.successLight}
-            subtitle={stats.ownerWalletBalance > 0 ? "Ready to settle to bank" : "No online balance pending"}
+            subtitle={stats.ownerWalletBalance > 0 ? "Paid to owner barcode" : "No owner UPI today"}
           />
         </View>
       )}
@@ -214,12 +214,12 @@ export default function DashboardScreen() {
           <View style={styles.incomeRow}>
             <View style={[styles.incomeItem, { backgroundColor: colors.accent, borderRadius: 10 }]}>
               <Feather name="wifi" size={14} color={colors.primary} />
-              <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Online</Text>
+              <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Owner UPI</Text>
               <Text style={[styles.incomeAmount, { color: colors.primary }]}>₹{stats.onlineIncome}</Text>
             </View>
             <View style={[styles.incomeItem, { backgroundColor: colors.successLight, borderRadius: 10 }]}>
               <Feather name="dollar-sign" size={14} color={colors.success} />
-              <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Offline</Text>
+              <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Cash</Text>
               <Text style={[styles.incomeAmount, { color: colors.success }]}>₹{stats.offlineIncome}</Text>
             </View>
             <View style={[styles.incomeItem, { backgroundColor: colors.muted, borderRadius: 10 }]}>

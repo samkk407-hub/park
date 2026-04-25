@@ -75,7 +75,7 @@ export default function ExitScreen() {
     const finalAmount = calculateFinalAmount(selectedEntry);
     const extraAmount = calculateExtraAmount(selectedEntry);
     const extraLine = extraAmount > 0
-      ? `\nExtra Due: Rs ${extraAmount}\nCollect by: ${extraPaymentType === "online" ? "Online / UPI" : "Cash / Offline"}`
+      ? `\nExtra Due: Rs ${extraAmount}\nCollect by: ${extraPaymentType === "online" ? "Owner QR / UPI" : "Cash"}`
       : "";
 
     Alert.alert(
@@ -186,7 +186,7 @@ export default function ExitScreen() {
                   ]}
                   onPress={() => setExtraPaymentType("online")}
                 >
-                  <Text style={[styles.payChoiceText, { color: extraPaymentType === "online" ? "#fff" : colors.foreground }]}>Online</Text>
+                  <Text style={[styles.payChoiceText, { color: extraPaymentType === "online" ? "#fff" : colors.foreground }]}>Owner UPI</Text>
                 </TouchableOpacity>
               </View>
             ) : null}

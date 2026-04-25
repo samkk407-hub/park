@@ -131,7 +131,7 @@ export default function TicketScreen() {
             <DetailItem label="Amount Collected" value={`Rs ${entry.amount}`} colors={colors} />
             <DetailItem
               label="Payment"
-              value={entry.paymentType === "online" ? "Online / UPI" : "Cash / Offline"}
+              value={entry.paymentType === "online" ? "Owner QR / UPI" : "Cash"}
               colors={colors}
             />
           </View>

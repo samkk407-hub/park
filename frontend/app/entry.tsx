@@ -19,8 +19,8 @@ const VEHICLE_OPTIONS: { type: VehicleType; label: string; icon: any }[] = [
 ];
 
 const PAYMENT_OPTIONS: { type: PaymentType; label: string; icon: any }[] = [
-  { type: "online", label: "Online / UPI", icon: "wifi" },
-  { type: "offline", label: "Cash / Offline", icon: "dollar-sign" },
+  { type: "online", label: "Owner QR / UPI", icon: "smartphone" },
+  { type: "offline", label: "Cash", icon: "dollar-sign" },
 ];
 const STAY_DAY_OPTIONS = [1, 2, 3, 7, 10];
 
@@ -94,8 +94,8 @@ export default function EntryScreen() {
     try {
       if (paymentType === "online") {
         Alert.alert(
-          "Razorpay Demo",
-          `Demo checkout for Rs ${totalAmount} (${plannedDays} day). Continue payment and generate ticket?`,
+          "Owner QR Payment",
+          `Ask the customer to pay Rs ${totalAmount} to the owner's barcode/UPI. Generate the ticket only after payment is confirmed.`,
           [
             {
               text: "Cancel",
@@ -103,7 +103,7 @@ export default function EntryScreen() {
               onPress: () => setLoading(false),
             },
             {
-              text: "Pay Now",
+              text: "Payment Received",
               onPress: () => {
                 void createPaidEntry("online")
                   .catch((e: any) => {
@@ -113,7 +113,7 @@ export default function EntryScreen() {
                         { text: "Buy Plan", onPress: () => router.push("/plans" as any) },
                       ]);
                     } else {
-                      Alert.alert("Error", e.message || "Failed to complete online payment and generate ticket");
+                      Alert.alert("Error", e.message || "Failed to confirm owner UPI payment and generate ticket");
                     }
                   })
                   .finally(() => setLoading(false));
@@ -330,7 +330,7 @@ export default function EntryScreen() {
           </View>
 
           <PrimaryButton
-            label={paymentType === "online" ? "Pay & Generate Ticket" : "Collect Cash & Generate Ticket"}
+            label={paymentType === "online" ? "Confirm Owner UPI & Generate Ticket" : "Collect Cash & Generate Ticket"}
             onPress={handleSubmit}
             loading={loading}
           />

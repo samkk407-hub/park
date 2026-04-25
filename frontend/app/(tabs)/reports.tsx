@@ -111,12 +111,12 @@ export default function ReportsScreen() {
         <View style={styles.row}>
           <View style={[styles.halfCard, { backgroundColor: colors.accent }]}>
             <Feather name="wifi" size={16} color={colors.primary} />
-            <Text style={[styles.halfLabel, { color: colors.mutedForeground }]}>Online</Text>
+            <Text style={[styles.halfLabel, { color: colors.mutedForeground }]}>Owner UPI</Text>
             <Text style={[styles.halfAmount, { color: colors.primary }]}>₹{stats.onlineIncome}</Text>
           </View>
           <View style={[styles.halfCard, { backgroundColor: colors.successLight }]}>
             <Feather name="dollar-sign" size={16} color={colors.success} />
-            <Text style={[styles.halfLabel, { color: colors.mutedForeground }]}>Offline</Text>
+            <Text style={[styles.halfLabel, { color: colors.mutedForeground }]}>Cash</Text>
             <Text style={[styles.halfAmount, { color: colors.success }]}>₹{stats.offlineIncome}</Text>
           </View>
         </View>

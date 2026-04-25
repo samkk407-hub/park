@@ -124,7 +124,7 @@ export default function EntryDetailScreen() {
         {/* Payment */}
         <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Payment</Text>
-          <Row label="Method" value={entry.paymentType === "online" ? "Online / UPI" : "Cash / Offline"} colors={colors} />
+          <Row label="Method" value={entry.paymentType === "online" ? "Owner QR / UPI" : "Cash"} colors={colors} />
           <Row label="Paid Amount" value={`Rs ${entry.amount}`} colors={colors} />
           <Row label="Final Amount" value={`Rs ${finalAmount()}`} colors={colors} highlight />
           <View style={[

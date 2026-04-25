@@ -208,10 +208,10 @@ export default function StaffScreen() {
           <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Owner Collection Summary</Text>
             <Text style={[styles.summaryLine, { color: colors.mutedForeground }]}>
-              Direct Online: Rs {ownerSummary.ownerOnlineCollected}
+              Owner QR / UPI: Rs {ownerSummary.ownerOnlineCollected}
             </Text>
             <Text style={[styles.summaryLine, { color: colors.mutedForeground }]}>
-              Owner Offline: Rs {ownerSummary.ownerOfflineCollected}
+              Owner Cash: Rs {ownerSummary.ownerOfflineCollected}
             </Text>
             <Text style={[styles.summaryLine, { color: colors.warning }]}>
               Attendant Cash Pending: Rs {ownerSummary.attendantUnsettled}
