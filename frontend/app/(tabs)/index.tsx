@@ -11,6 +11,7 @@ import { StatsCard } from "@/components/StatsCard";
 import { OccupancyBar } from "@/components/OccupancyBar";
 import { EntryCard } from "@/components/EntryCard";
 import { useRouter } from "expo-router";
+import { getBasePaymentAmount, getEntryAmountForPaymentType, getOverstayPaymentAmount } from "@/lib/entryMoney";
 
 export default function DashboardScreen() {
   const { user, parking, entries, refreshData, refreshSession } = useApp();
@@ -26,18 +27,8 @@ export default function DashboardScreen() {
     const todayEntries = entries.filter(e => new Date(e.entryTime).toDateString() === today);
     const inside = entries.filter(e => e.status === "inside");
     const todayExited = todayEntries.filter(e => e.status === "exited");
-    const baseAmount = (entry: (typeof entries)[number]) =>
-      entry.baseAmount ?? Math.max(entry.amount - (entry.overstayAmount || 0), 0);
-    const onlineIncome = todayEntries.reduce((sum, entry) => {
-      const base = entry.paymentType === "online" && entry.paymentStatus === "paid" ? baseAmount(entry) : 0;
-      const overstay = entry.overstayPaymentType === "online" ? entry.overstayAmount || 0 : 0;
-      return sum + base + overstay;
-    }, 0);
-    const offlineIncome = todayEntries.reduce((sum, entry) => {
-      const base = entry.paymentType === "offline" && entry.paymentStatus === "paid" ? baseAmount(entry) : 0;
-      const overstay = entry.overstayPaymentType === "offline" ? entry.overstayAmount || 0 : 0;
-      return sum + base + overstay;
-    }, 0);
+    const onlineIncome = todayEntries.reduce((sum, entry) => sum + getEntryAmountForPaymentType(entry, "online"), 0);
+    const offlineIncome = todayEntries.reduce((sum, entry) => sum + getEntryAmountForPaymentType(entry, "offline"), 0);
     const pending = entries.filter(e => e.paymentStatus === "pending").length;
     return {
       inside: inside.length,
@@ -54,12 +45,12 @@ export default function DashboardScreen() {
                 entry.paymentType === "offline" &&
                 entry.paymentCollectedByUserId === user.id &&
                 entry.settlementStatus === "unsettled"
-                ? baseAmount(entry)
+                ? getBasePaymentAmount(entry)
                 : 0;
               const overstay = entry.overstayPaymentType === "offline" &&
                 entry.overstayCollectedByUserId === user.id &&
                 entry.overstaySettlementStatus === "unsettled"
-                ? entry.overstayAmount || 0
+                ? getOverstayPaymentAmount(entry)
                 : 0;
               return sum + base + overstay;
             }, 0)
@@ -71,12 +62,12 @@ export default function DashboardScreen() {
                 entry.paymentType === "online" &&
                 entry.paymentCollectedByRole === "owner" &&
                 entry.onlineSettlementStatus === "unsettled"
-                ? baseAmount(entry)
+                ? getBasePaymentAmount(entry)
                 : 0;
               const overstay = entry.overstayPaymentType === "online" &&
                 entry.overstayCollectedByRole === "owner" &&
                 entry.overstayOnlineSettlementStatus === "unsettled"
-                ? entry.overstayAmount || 0
+                ? getOverstayPaymentAmount(entry)
                 : 0;
               return sum + base + overstay;
             }, 0)
@@ -106,6 +97,7 @@ export default function DashboardScreen() {
 
   const topPad = isWeb ? 67 : insets.top + 16;
   const botPad = isWeb ? 34 : insets.bottom + 90;
+  const canViewIncome = user?.role === "owner" || user?.role === "superadmin";
 
   return (
     <ScrollView
@@ -216,27 +208,28 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Income */}
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-        <Text style={[styles.cardTitle, { color: colors.foreground }]}>{"Today's Income"}</Text>
-        <View style={styles.incomeRow}>
-          <View style={[styles.incomeItem, { backgroundColor: colors.accent, borderRadius: 10 }]}>
-            <Feather name="wifi" size={14} color={colors.primary} />
-            <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Online</Text>
-            <Text style={[styles.incomeAmount, { color: colors.primary }]}>₹{stats.onlineIncome}</Text>
-          </View>
-          <View style={[styles.incomeItem, { backgroundColor: colors.successLight, borderRadius: 10 }]}>
-            <Feather name="dollar-sign" size={14} color={colors.success} />
-            <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Offline</Text>
-            <Text style={[styles.incomeAmount, { color: colors.success }]}>₹{stats.offlineIncome}</Text>
-          </View>
-          <View style={[styles.incomeItem, { backgroundColor: colors.muted, borderRadius: 10 }]}>
-            <Feather name="trending-up" size={14} color={colors.foreground} />
-            <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Total</Text>
-            <Text style={[styles.incomeAmount, { color: colors.foreground }]}>₹{stats.totalIncome}</Text>
+      {canViewIncome && (
+        <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.cardTitle, { color: colors.foreground }]}>{"Today's Income"}</Text>
+          <View style={styles.incomeRow}>
+            <View style={[styles.incomeItem, { backgroundColor: colors.accent, borderRadius: 10 }]}>
+              <Feather name="wifi" size={14} color={colors.primary} />
+              <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Online</Text>
+              <Text style={[styles.incomeAmount, { color: colors.primary }]}>₹{stats.onlineIncome}</Text>
+            </View>
+            <View style={[styles.incomeItem, { backgroundColor: colors.successLight, borderRadius: 10 }]}>
+              <Feather name="dollar-sign" size={14} color={colors.success} />
+              <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Offline</Text>
+              <Text style={[styles.incomeAmount, { color: colors.success }]}>₹{stats.offlineIncome}</Text>
+            </View>
+            <View style={[styles.incomeItem, { backgroundColor: colors.muted, borderRadius: 10 }]}>
+              <Feather name="trending-up" size={14} color={colors.foreground} />
+              <Text style={[styles.incomeLabel, { color: colors.mutedForeground }]}>Total</Text>
+              <Text style={[styles.incomeAmount, { color: colors.foreground }]}>₹{stats.totalIncome}</Text>
+            </View>
           </View>
         </View>
-      </View>
+      )}
 
       {/* Recent Inside */}
       {recentEntries.length > 0 && (
