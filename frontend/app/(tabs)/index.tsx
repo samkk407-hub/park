@@ -197,6 +197,7 @@ export default function DashboardScreen() {
 
       {(user?.role === "owner" || user?.role === "superadmin") && (
         <View style={styles.ownerPanel}>
+          {/*
           <View style={styles.gridRow}>
             <StatsCard
               label="Owner UPI Total"
@@ -204,9 +205,9 @@ export default function DashboardScreen() {
               icon="credit-card"
               color={stats.ownerWalletBalance > 0 ? colors.primary : colors.success}
               bgColor={stats.ownerWalletBalance > 0 ? colors.accent : colors.successLight}
-              subtitle={stats.ownerWalletBalance > 0 ? "Paid to owner barcode" : "No owner UPI today"}
             />
           </View>
+          */}
           <View style={styles.ownerToolsRow}>
             <TouchableOpacity
               style={[styles.ownerToolBtn, { backgroundColor: colors.primary }]}
